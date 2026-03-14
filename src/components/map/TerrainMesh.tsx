@@ -84,9 +84,10 @@ export default function TerrainMesh({ elevations }: Props) {
         const wx = (col / (cols - 1) - 0.5) * PLANE_W;
         // World Z: row 0 = north = -PLANE_H/2, row max = south = +PLANE_H/2
         const wz = (row / (rows - 1) - 0.5) * PLANE_H;
-        // World Y (elevation)
+        // World Y (elevation). Oceans/seas are clamped to 0 so they render
+        // as a flat plane. Color still uses raw elev so water stays blue.
         const elev = elevations[vi] ?? 0;
-        const wy = elev * ELEVATION_SCALE;
+        const wy = Math.max(0, elev) * ELEVATION_SCALE;
 
         positions[vi * 3 + 0] = wx;
         positions[vi * 3 + 1] = wy;

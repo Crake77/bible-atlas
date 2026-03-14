@@ -21,7 +21,7 @@ import LayerPanel from "@/components/ui/LayerPanel";
 // Camera target: center over Israel [lat=31.5, lng=35.5]
 const [centerX, centerZ] = geoToWorld(31.5, 35.5);
 
-const INIT_CAMERA_POS: [number, number, number] = [centerX, 350, centerZ + 150];
+const INIT_CAMERA_POS: [number, number, number] = [centerX, 160, centerZ + 80];
 
 const btn =
   "w-9 h-9 flex items-center justify-center rounded bg-black/60 hover:bg-black/80 " +
@@ -176,7 +176,7 @@ export default function TerrainScene() {
 
         <OrbitControls
           ref={controlsRef}
-          minDistance={30}
+          minDistance={15}
           maxDistance={800}
           maxPolarAngle={Math.PI * 0.45}
           minPolarAngle={0.1}

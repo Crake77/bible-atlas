@@ -29,7 +29,7 @@ export const PLANE_H = Math.round(PLANE_W * ((28 - 16.6) / (61.875 + 11.25))); /
 
 // World-units per meter of real elevation. 0.01 gives Mt Hermon (~2814m)
 // about 28 units — visible as a clear peak at our default camera distance.
-export const ELEVATION_SCALE = 0.01;
+export const ELEVATION_SCALE = 0.0025;
 
 // Geographic bounds derived from the tile grid edges (not approximated —
 // these are the exact lat/lng at the tile boundaries the mesh will cover).
