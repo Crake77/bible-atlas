@@ -1,22 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
+import type { Viewer } from "cesium";
 
 /**
  * TerrainMap
  *
  * Renders an interactive 3D globe using CesiumJS, centered on the ancient Near East.
- * On-screen buttons handle tilt, rotate, and zoom for trackpad/mouse users.
- *
- * Next steps:
- *   - Add city marker pins from src/data/geography/cities.ts
- *   - Animate camera to focus on a chapter's region when selected in the reader
- *   - Draw movement arrows for journeys and military campaigns
+ * - Vertical exaggeration ×6 so terrain is dramatic
+ * - Natural Earth II base imagery (no modern roads or borders)
+ * - All data layer components mounted when viewer is ready
  */
 export default function TerrainMap() {
   const containerRef = useRef<HTMLDivElement>(null);
-  // viewerRef lets the button handlers access the Cesium camera after setup
-  const viewerRef = useRef<import("cesium").Viewer | null>(null);
+  const viewerRef = useRef<Viewer | null>(null);
+  const [viewerReady, setViewerReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !containerRef.current) return;
@@ -25,8 +23,7 @@ export default function TerrainMap() {
       const Cesium = await import("cesium");
 
       if (process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN) {
-        Cesium.Ion.defaultAccessToken =
-          process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
+        Cesium.Ion.defaultAccessToken = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
       }
 
       if (!containerRef.current) return;
@@ -47,75 +44,122 @@ export default function TerrainMap() {
         infoBox: false,
       });
 
+      // ── Vertical exaggeration ×6 ───────────────────────────────────────────
+      // This scales all terrain heights 6× while lat/lng stays accurate.
+      // Dead Sea depression becomes visually striking; Mt. Hermon towers.
+      viewer.scene.verticalExaggeration = 6.0;
+
+      // ── Swap imagery: remove satellite, add Natural Earth II ───────────────
+      // Natural Earth II (Cesium ion asset 3845) is a clean artistic base
+      // with no modern roads, labels, or political borders.
+      viewer.imageryLayers.removeAll();
+      if (process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN) {
+        try {
+          const naturalEarth = await Cesium.IonImageryProvider.fromAssetId(3845);
+          viewer.imageryLayers.addImageryProvider(naturalEarth);
+        } catch {
+          // Fallback: plain earth color if Natural Earth II isn't available
+          viewer.imageryLayers.addImageryProvider(
+            new Cesium.SingleTileImageryProvider({
+              url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              rectangle: Cesium.Rectangle.MAX_VALUE,
+            })
+          );
+        }
+      }
+
       viewerRef.current = viewer;
 
-      // Start over the ancient Near East at a 45° tilt so terrain is visible
+      // Start over the ancient Near East at a 45° tilt so terrain drama is visible immediately
       viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(35.5, 28.0, 500000),
+        destination: Cesium.Cartesian3.fromDegrees(35.5, 30.0, 600000),
         orientation: {
           heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-45),
+          pitch: Cesium.Math.toRadians(-40),
           roll: 0,
         },
       });
+
+      setViewerReady(true);
     })();
 
     return () => {
       viewerRef.current?.destroy();
       viewerRef.current = null;
+      setViewerReady(false);
     };
   }, []);
 
   // --- Button handlers ---
-  // Zoom amount scales with current altitude so steps feel consistent
   const getZoomAmount = useCallback(() => {
     const height = viewerRef.current?.camera.positionCartographic.height ?? 500000;
     return height * 0.25;
   }, []);
 
-  const zoomIn     = useCallback(() => viewerRef.current?.camera.zoomIn(getZoomAmount()),  [getZoomAmount]);
-  const zoomOut    = useCallback(() => viewerRef.current?.camera.zoomOut(getZoomAmount()), [getZoomAmount]);
-  const tiltUp     = useCallback(() => viewerRef.current?.camera.lookUp(0.08),    []);
-  const tiltDown   = useCallback(() => viewerRef.current?.camera.lookDown(0.08),  []);
-  const rotateLeft = useCallback(() => viewerRef.current?.camera.rotateLeft(0.08), []);
-  const rotateRight= useCallback(() => viewerRef.current?.camera.rotateRight(0.08),[]);
+  const zoomIn      = useCallback(() => viewerRef.current?.camera.zoomIn(getZoomAmount()),   [getZoomAmount]);
+  const zoomOut     = useCallback(() => viewerRef.current?.camera.zoomOut(getZoomAmount()),  [getZoomAmount]);
+  const tiltUp      = useCallback(() => viewerRef.current?.camera.lookUp(0.08),    []);
+  const tiltDown    = useCallback(() => viewerRef.current?.camera.lookDown(0.08),  []);
+  const rotateLeft  = useCallback(() => viewerRef.current?.camera.rotateLeft(0.08),  []);
+  const rotateRight = useCallback(() => viewerRef.current?.camera.rotateRight(0.08), []);
 
-  const resetView  = useCallback(async () => {
+  const resetView = useCallback(async () => {
     const Cesium = await import("cesium");
     viewerRef.current?.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(35.5, 28.0, 500000),
+      destination: Cesium.Cartesian3.fromDegrees(35.5, 30.0, 600000),
       orientation: {
         heading: Cesium.Math.toRadians(0),
-        pitch: Cesium.Math.toRadians(-45),
+        pitch: Cesium.Math.toRadians(-40),
         roll: 0,
       },
       duration: 1.5,
     });
   }, []);
 
-  // Shared button style
   const btn =
     "w-9 h-9 flex items-center justify-center rounded bg-black/60 hover:bg-black/80 " +
     "text-white text-base leading-none select-none transition-colors active:bg-white/20";
+
+  // Lazily import layer components to keep the initial bundle small
+  const RiverLayer       = viewerReady ? require("@/components/map/RiverLayer").default       : null;
+  const RegionLayer      = viewerReady ? require("@/components/map/RegionLayer").default      : null;
+  const TribeLayer       = viewerReady ? require("@/components/map/TribeLayer").default       : null;
+  const RouteLayer       = viewerReady ? require("@/components/map/RouteLayer").default       : null;
+  const CityLayer        = viewerReady ? require("@/components/map/CityLayer").default        : null;
+  const SpecialSiteLayer = viewerReady ? require("@/components/map/SpecialSiteLayer").default : null;
+  const MovementLayer    = viewerReady ? require("@/components/map/MovementLayer").default    : null;
+  const LabelLayer       = viewerReady ? require("@/components/map/LabelLayer").default       : null;
+  const LayerPanel       = viewerReady ? require("@/components/ui/LayerPanel").default        : null;
+
+  const viewer = viewerRef.current;
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       {/* Cesium canvas */}
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
+      {/* Data layers — mounted after viewer initialises */}
+      {viewerReady && viewer && (
+        <>
+          <RiverLayer       viewer={viewer} />
+          <RegionLayer      viewer={viewer} />
+          <TribeLayer       viewer={viewer} />
+          <RouteLayer       viewer={viewer} />
+          <CityLayer        viewer={viewer} />
+          <SpecialSiteLayer viewer={viewer} />
+          <MovementLayer    viewer={viewer} />
+          <LabelLayer       viewer={viewer} />
+          <LayerPanel />
+        </>
+      )}
+
       {/* On-screen camera controls — bottom-right corner */}
       <div className="absolute bottom-8 right-3 flex flex-col gap-2 z-10">
-
-        {/* Zoom */}
         <div className="flex flex-col items-center gap-1">
           <button className={btn} onClick={zoomIn}  title="Zoom in">＋</button>
           <button className={btn} onClick={zoomOut} title="Zoom out">－</button>
         </div>
-
-        {/* Divider */}
         <div className="h-px bg-white/20 mx-1" />
-
-        {/* Tilt (up/down) and Rotate (left/right) — D-pad layout */}
         <div className="flex flex-col items-center gap-1">
           <button className={btn} onClick={tiltUp}     title="Tilt up">▲</button>
           <div className="flex gap-1">
@@ -124,11 +168,7 @@ export default function TerrainMap() {
           </div>
           <button className={btn} onClick={tiltDown}   title="Tilt down">▼</button>
         </div>
-
-        {/* Divider */}
         <div className="h-px bg-white/20 mx-1" />
-
-        {/* Reset view */}
         <button className={btn} onClick={resetView} title="Reset view">⌂</button>
       </div>
     </div>

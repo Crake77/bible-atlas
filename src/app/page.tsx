@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import BibleReader from "@/components/reader/BibleReader";
+import { AppStateProvider } from "@/lib/AppStateContext";
 
 // Load the 3D map only in the browser — CesiumJS requires browser APIs
 const TerrainMap = dynamic(() => import("@/components/map/TerrainMap"), {
@@ -20,16 +21,18 @@ const TerrainMap = dynamic(() => import("@/components/map/TerrainMap"), {
  */
 export default function HomePage() {
   return (
-    <main className="flex h-screen w-screen overflow-hidden">
-      {/* 3D Map — takes up 65% of the screen width */}
-      <div className="flex-1">
-        <TerrainMap />
-      </div>
+    <AppStateProvider>
+      <main className="flex h-screen w-screen overflow-hidden">
+        {/* 3D Map — takes up 65% of the screen width */}
+        <div className="flex-1">
+          <TerrainMap />
+        </div>
 
-      {/* Bible Reader Panel — fixed width sidebar */}
-      <div className="w-96 border-l border-stone/40 overflow-y-auto bg-ink/80">
-        <BibleReader />
-      </div>
-    </main>
+        {/* Bible Reader Panel — fixed width sidebar */}
+        <div className="w-96 border-l border-stone/40 overflow-y-auto bg-ink/80">
+          <BibleReader />
+        </div>
+      </main>
+    </AppStateProvider>
   );
 }
