@@ -145,10 +145,12 @@ function biomeWeight(lat: number, lng: number, rect: [number, number, number, nu
 // prevent z-fighting between the low terrain mesh and the water plane.
 
 function isDeadSea(lat: number, lng: number): boolean {
-  return lat >= 31.08 && lat <= 31.78 && lng >= 35.35 && lng <= 35.62;
+  // Dead Sea: ~50×15km, -430m. Tightened to exclude surrounding dry rift floor.
+  return lat >= 31.10 && lat <= 31.76 && lng >= 35.35 && lng <= 35.55;
 }
 function isSeaOfGalilee(lat: number, lng: number): boolean {
-  return lat >= 32.70 && lat <= 32.93 && lng >= 35.50 && lng <= 35.69;
+  // Sea of Galilee (Kinneret): ~21×11km, -213m. Extended slightly northward.
+  return lat >= 32.70 && lat <= 32.97 && lng >= 35.50 && lng <= 35.69;
 }
 /**
  * Below-sea-level areas that are LAND, not ocean — geometry clamped above
@@ -168,6 +170,20 @@ function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
   if (lat >= 32.5 && lat <= 33.3 && lng >= 35.35 && lng <= 36.3) return true;
   // Nile Delta: only catch true delta lowlands; Mediterranean shelf is > 5m deep
   if (elev > -5 && lat >= 29.8 && lat <= 31.0 && lng >= 30.5 && lng <= 32.0) return true;
+
+  // ── Additional below-sea-level DRY LAND basins ──────────────────────────
+  // Qattara Depression (Egypt): ~19,600 km², lowest -133m. Dry desert basin,
+  // no permanent water. SRTM codes large swaths as negative → must flag as land.
+  if (lat >= 28.5 && lat <= 30.5 && lng >= 26.0 && lng <= 29.5) return true;
+  // Siwa Oasis depression (Egypt): small basin reaching -60m, west of Qattara
+  if (lat >= 29.0 && lat <= 29.4 && lng >= 25.0 && lng <= 26.0) return true;
+  // Sabkhat Ghuzayyil (Libya): Libya's lowest point at -47m
+  if (lat >= 29.5 && lat <= 30.1 && lng >= 19.0 && lng <= 20.2) return true;
+  // Chott Melrhir (Algeria): -40m, largest depression in North Africa west of Egypt
+  if (lat >= 33.5 && lat <= 35.0 && lng >= 5.5 && lng <= 8.0) return true;
+  // Karagiye / Batyr depression (Kazakhstan): -132m dry basin near Caspian
+  if (lat >= 43.2 && lat <= 44.2 && lng >= 51.0 && lng <= 52.5) return true;
+
   return false;
 }
 

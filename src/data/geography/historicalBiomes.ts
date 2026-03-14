@@ -136,7 +136,7 @@ export const HISTORICAL_BIOMES: BiomeZone[] = [
     rgb: hex("#c2a248"),
     priority: 1,
     rects: [
-      [28.0, 30.5, 32.0, 34.5], // Sinai Peninsula
+      [27.5, 31.3, 32.0, 34.9], // Sinai Peninsula (extended to cover full peninsula)
       [22.0, 32.0, 36.0, 55.0], // Arabian desert
     ],
   },
