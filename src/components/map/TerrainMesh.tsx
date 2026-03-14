@@ -300,17 +300,13 @@ export default function TerrainMesh({ elevations }: Props) {
         const wz   = (row / (rows - 1) - 0.5) * PLANE_H;
         const elev = elevations[vi] ?? 0;
 
-        // Lake vertices must always be BELOW the water plane (y=0) so the
-        // plane renders on top of them, creating a visible lake surface.
-        // At 5km resolution many lake-edge SRTM samples average above 0m even
-        // though the real lake is at -213m / -430m — force a minimum of -50m.
+        // Lakes are now rendered as explicit polygon overlays (LakesLayer).
+        // Terrain vertices inside the lake bboxes remain at their SRTM elevation
+        // (negative → below water plane) so the water plane shows through them.
         // Rift valley land (non-lake) is clamped just above the water plane.
-        const isDeadSeaVert   = isDeadSea(lat, lng);
-        const isGalileeVert   = isSeaOfGalilee(lat, lng);
-        const isLake          = isDeadSeaVert || isGalileeVert;
-        const lakeFloor       = isDeadSeaVert ? -430 : -213; // real lake depth (m)
+        const isLake = isDeadSea(lat, lng) || isSeaOfGalilee(lat, lng);
         const wy = isLake
-          ? Math.min(elev, lakeFloor * 0.5) * ELEVATION_SCALE  // guaranteed below water plane
+          ? Math.min(elev, -10) * ELEVATION_SCALE  // keep below water plane
           : (elev <= 0 && isBelowSeaLevelLand(lat, lng, elev))
             ? 0.02
             : elev * ELEVATION_SCALE;

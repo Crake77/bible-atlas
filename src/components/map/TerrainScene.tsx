@@ -19,6 +19,7 @@ import TribeLayer from "./TribeLayer";
 import RouteLayer from "./RouteLayer";
 import SpecialSiteLayer from "./SpecialSiteLayer";
 import MovementLayer from "./MovementLayer";
+import LakesLayer from "./LakesLayer";
 import LayerPanel from "@/components/ui/LayerPanel";
 
 // Camera target: center over Israel [lat=31.5, lng=35.5]
@@ -176,6 +177,8 @@ export default function TerrainScene() {
         {/* Water plane renders first; terrain occludes it above sea level */}
         <WaterPlane />
         {heightmap && <TerrainMesh elevations={heightmap} />}
+        {/* Lake polygon overlays — explicit vector shapes sit above water plane */}
+        <LakesLayer />
 
         {/* Data layers */}
         <RiverLayer />
