@@ -210,16 +210,26 @@ export default function TerrainMap() {
 
       viewerRef.current = viewer;
 
-      // ── Camera altitude cap — keeps LOD consistent ────────────────────────
-      // At >1200km the Near East drops to ~4 low-res tiles and looks terrible.
-      // We clamp to 1200km so users can see the whole region + Egypt/Babylon
-      // context but can't zoom to full-globe view where terrain quality breaks.
+      // ── Camera altitude band — locks terrain to a single LOD tier ───────────
+      //
+      // MAX: 1200km — beyond this the Near East is just 4 low-res tiles.
+      //
+      // MIN: 80km — this is the critical lock. CesiumJS streams finer-resolution
+      // terrain tiles as you zoom in. Each new LOD tier loads visible geometry
+      // changes that look jarring with ×12 vertical exaggeration. By preventing
+      // zoom below 80km, the camera can never reach the zoom level that would
+      // trigger the next tile tier — terrain geometry is effectively frozen.
+      // At 80km altitude with a 40° pitch you see ~200km × 150km, which covers
+      // the whole Galilee-to-Negev span with dramatic ridge silhouettes.
       const MAX_CAMERA_HEIGHT = 1_200_000; // metres
+      const MIN_CAMERA_HEIGHT =    80_000; // metres — LOD lock floor
       viewer.scene.postRender.addEventListener(() => {
         if (!viewerRef.current) return;
         const cart = viewerRef.current.camera.positionCartographic;
         if (cart.height > MAX_CAMERA_HEIGHT) {
           viewerRef.current.camera.zoomIn(cart.height - MAX_CAMERA_HEIGHT);
+        } else if (cart.height < MIN_CAMERA_HEIGHT) {
+          viewerRef.current.camera.zoomOut(MIN_CAMERA_HEIGHT - cart.height);
         }
       });
 
