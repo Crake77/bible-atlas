@@ -168,11 +168,12 @@ function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
   // Lebanese / Israeli Mediterranean coast (shore is at lng ~34.85–35.25).
   // Southern section (Arabah + Dead Sea + lower Jordan): can reach lng 35.0
   // since the coast at lat<32.5 is west of our mesh resolution.
-  if (lat >= 30.2 && lat <= 32.5 && lng >= 35.10 && lng <= 36.3) return true;
-  // Northern section (Sea of Galilee + upper Jordan + Hula Valley): start
-  // at 35.55 — the Lebanese coast at lat 32.5–33.5 is at lng 35.05–35.40,
-  // so 35.55 keeps us east of the shoreline.
-  if (lat >= 32.5 && lat <= 33.3 && lng >= 35.55 && lng <= 36.3) return true;
+  // Jordan Rift Valley — single rect covering the full rift corridor.
+  // The western boundary is set to 35.55 (east of the entire Israeli/Lebanese
+  // coast which runs from lng ~34.85 in the south to ~35.40 in the north).
+  // This eliminates the L-shaped step that appeared when two rects with
+  // different western edges met at lat 32.5.
+  if (lat >= 30.2 && lat <= 33.3 && lng >= 35.55 && lng <= 36.3) return true;
   // Nile Delta: only catch true delta lowlands; Mediterranean shelf is > 5m deep
   if (elev > -5 && lat >= 29.8 && lat <= 31.0 && lng >= 30.5 && lng <= 32.0) return true;
 
@@ -299,14 +300,20 @@ export default function TerrainMesh({ elevations }: Props) {
         const wz   = (row / (rows - 1) - 0.5) * PLANE_H;
         const elev = elevations[vi] ?? 0;
 
-        // Below-sea-level land (Jordan Rift corridor, Nile Delta) must sit
-        // just above the water plane (y=0) so it renders as terrain, not
-        // as underwater. The actual lakes (Dead Sea, Sea of Galilee) keep their
-        // true negative y so the reflective water plane appears above them.
-        const isLake = isDeadSea(lat, lng) || isSeaOfGalilee(lat, lng);
-        const wy = (!isLake && elev <= 0 && isBelowSeaLevelLand(lat, lng, elev))
-          ? 0.02                  // just above water plane → terrain visible
-          : elev * ELEVATION_SCALE;
+        // Lake vertices must always be BELOW the water plane (y=0) so the
+        // plane renders on top of them, creating a visible lake surface.
+        // At 5km resolution many lake-edge SRTM samples average above 0m even
+        // though the real lake is at -213m / -430m — force a minimum of -50m.
+        // Rift valley land (non-lake) is clamped just above the water plane.
+        const isDeadSeaVert   = isDeadSea(lat, lng);
+        const isGalileeVert   = isSeaOfGalilee(lat, lng);
+        const isLake          = isDeadSeaVert || isGalileeVert;
+        const lakeFloor       = isDeadSeaVert ? -430 : -213; // real lake depth (m)
+        const wy = isLake
+          ? Math.min(elev, lakeFloor * 0.5) * ELEVATION_SCALE  // guaranteed below water plane
+          : (elev <= 0 && isBelowSeaLevelLand(lat, lng, elev))
+            ? 0.02
+            : elev * ELEVATION_SCALE;
 
         positions[vi * 3 + 0] = wx;
         positions[vi * 3 + 1] = wy;
