@@ -3,73 +3,52 @@
 /**
  * RiverLayer.tsx
  *
- * Renders river and wadi polylines on the Cesium globe.
- * All polylines clamp to ground because of the ×6 vertical exaggeration.
+ * Renders river polylines as Three.js line objects inside an R3F scene.
+ * River paths are [lat, lng] pairs; converted to world coords via geoToWorld.
+ * Uses <primitive object={...}> to avoid the SVG <line> JSX type conflict.
  */
 
-import { useEffect, useRef } from "react";
+import { useMemo } from "react";
+import * as THREE from "three";
 import { useAppState } from "@/lib/AppStateContext";
 import { rivers } from "@/data/geography/rivers";
+import { geoToWorld } from "@/lib/terrain/constants";
 
-type Props = {
-  viewer: import("cesium").Viewer;
-};
+// A small elevation offset so lines float above the terrain surface
+const FLOAT_Y = 2;
 
-export default function RiverLayer({ viewer }: Props) {
+export default function RiverLayer() {
   const { layerVisibility } = useAppState();
-  const entityRefs = useRef<import("cesium").Entity[]>([]);
-
   const visible = layerVisibility["layer-rivers"];
 
-  useEffect(() => {
-    // Clean up previously created entities
-    entityRefs.current.forEach((e) => {
-      try {
-        viewer.entities.remove(e);
-      } catch {}
-    });
-    entityRefs.current = [];
+  const lineObjects = useMemo(() => {
+    if (!visible) return [];
 
-    if (!visible) return;
-
-    (async () => {
-      const Cesium = await import("cesium");
-
-      for (const river of rivers) {
-        // River paths are [lat, lng] pairs — swap to [lng, lat, lng, lat...] for Cesium
-        const flat: number[] = [];
-        for (const [lat, lng] of river.path) {
-          flat.push(lng, lat);
-        }
-
-        const isMajor = river.tier === "major";
-        const color = Cesium.Color.fromCssColorString("#4a90d9");
-        const alpha = isMajor ? 0.85 : 0.6;
-        const width = isMajor ? 2.5 : 1.5;
-
-        const entity = viewer.entities.add({
-          name: river.name,
-          polyline: {
-            positions: Cesium.Cartesian3.fromDegreesArray(flat),
-            width,
-            material: color.withAlpha(alpha),
-            clampToGround: true,
-          },
-        });
-
-        entityRefs.current.push(entity);
-      }
-    })();
-
-    return () => {
-      entityRefs.current.forEach((e) => {
-        try {
-          viewer.entities.remove(e);
-        } catch {}
+    return rivers.map((river) => {
+      const points = river.path.map(([lat, lng]) => {
+        const [x, z] = geoToWorld(lat, lng);
+        return new THREE.Vector3(x, FLOAT_Y, z);
       });
-      entityRefs.current = [];
-    };
-  }, [viewer, visible]);
 
-  return null;
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({
+        color: "#4a90d9",
+        transparent: true,
+        opacity: river.tier === "major" ? 0.85 : 0.6,
+      });
+      const line = new THREE.Line(geometry, material);
+
+      return { id: river.id, line };
+    });
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <group>
+      {lineObjects.map(({ id, line }) => (
+        <primitive key={id} object={line} />
+      ))}
+    </group>
+  );
 }

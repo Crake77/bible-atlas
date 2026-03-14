@@ -3,23 +3,55 @@
 /**
  * LabelLayer.tsx
  *
- * Renders text labels for regions, rivers, cities, and tribes.
- * Labels use disableDepthTestDistance so they remain visible through terrain,
- * which is essential when vertical exaggeration is active.
+ * Renders text labels for regions, rivers, cities, and tribes using
+ * @react-three/drei Html component (DOM overlay inside R3F scene).
  */
 
-import { useEffect, useRef } from "react";
+import { Html } from "@react-three/drei";
 import { useAppState } from "@/lib/AppStateContext";
 import { regions } from "@/data/geography/regions";
 import { rivers } from "@/data/geography/rivers";
 import { cities } from "@/data/geography/cities";
 import { tribes } from "@/data/geography/tribes";
+import { geoToWorld } from "@/lib/terrain/constants";
 
-type Props = {
-  viewer: import("cesium").Viewer;
+const LABEL_STYLE: React.CSSProperties = {
+  color: "#fff8e8",
+  textShadow: "0 0 4px #000, 0 0 8px #000",
+  fontFamily: "Georgia, serif",
+  fontSize: "14px",
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  userSelect: "none",
 };
 
-export default function LabelLayer({ viewer }: Props) {
+const RIVER_LABEL_STYLE: React.CSSProperties = {
+  ...LABEL_STYLE,
+  color: "#c8e8ff",
+  fontStyle: "italic",
+  fontSize: "12px",
+};
+
+const TRIBE_LABEL_STYLE: React.CSSProperties = {
+  ...LABEL_STYLE,
+  color: "#f0ffe8",
+  fontStyle: "italic",
+  fontWeight: "bold",
+  fontSize: "13px",
+};
+
+const LABEL_Y = 8;
+
+// Static water body labels shown with river labels
+const WATER_BODIES = [
+  { name: "Dead Sea",          lat: 31.40, lng: 35.50 },
+  { name: "Sea of Galilee",    lat: 32.83, lng: 35.60 },
+  { name: "Mediterranean Sea", lat: 32.30, lng: 33.80 },
+  { name: "Red Sea",           lat: 27.50, lng: 32.80 },
+  { name: "Gulf of Aqaba",     lat: 29.30, lng: 34.92 },
+];
+
+export default function LabelLayer() {
   const { layerVisibility } = useAppState();
 
   const showRegionLabels = layerVisibility["layer-labels-regions"];
@@ -31,199 +63,81 @@ export default function LabelLayer({ viewer }: Props) {
   const showMinorCities          = layerVisibility["layer-cities-minor"];
   const showArchaeologicalCities = layerVisibility["layer-cities-archaeological"];
 
-  const entityRefs = useRef<import("cesium").Entity[]>([]);
+  const anyVisible = showRegionLabels || showRiverLabels || showCityLabels || showTribeLabels;
+  if (!anyVisible) return null;
 
-  useEffect(() => {
-    // Clean up previously created entities
-    entityRefs.current.forEach((e) => {
-      try {
-        viewer.entities.remove(e);
-      } catch {}
-    });
-    entityRefs.current = [];
+  return (
+    <group>
+      {/* Region labels */}
+      {showRegionLabels &&
+        regions
+          .filter((r) => r.tier === "local" && r.labelPosition)
+          .map((region) => {
+            const [lat, lng] = region.labelPosition;
+            const [x, z] = geoToWorld(lat, lng);
+            return (
+              <Html key={region.id} position={[x, LABEL_Y, z]} center distanceFactor={200}>
+                <span style={LABEL_STYLE}>{region.name}</span>
+              </Html>
+            );
+          })}
 
-    const anyVisible =
-      showRegionLabels || showRiverLabels || showCityLabels || showTribeLabels;
-    if (!anyVisible) return;
+      {/* River labels */}
+      {showRiverLabels && (
+        <>
+          {rivers
+            .filter((r) => r.labelPosition)
+            .map((river) => {
+              const [lat, lng] = river.labelPosition!;
+              const [x, z] = geoToWorld(lat, lng);
+              return (
+                <Html key={river.id} position={[x, LABEL_Y, z]} center distanceFactor={200}>
+                  <span style={RIVER_LABEL_STYLE}>{river.name}</span>
+                </Html>
+              );
+            })}
+          {/* Water body labels */}
+          {WATER_BODIES.map((wb) => {
+            const [x, z] = geoToWorld(wb.lat, wb.lng);
+            return (
+              <Html key={wb.name} position={[x, LABEL_Y, z]} center distanceFactor={200}>
+                <span style={{ ...RIVER_LABEL_STYLE, fontWeight: "bold", fontSize: "13px" }}>
+                  {wb.name}
+                </span>
+              </Html>
+            );
+          })}
+        </>
+      )}
 
-    (async () => {
-      const Cesium = await import("cesium");
+      {/* City labels */}
+      {showCityLabels &&
+        cities.map((city) => {
+          if (city.tier === "major" && !showMajorCities) return null;
+          if (city.tier === "minor" && !showMinorCities) return null;
+          if (city.tier === "archaeological" && !showArchaeologicalCities) return null;
 
-      // -----------------------------------------------------------------------
-      // Region labels — only local tier
-      // -----------------------------------------------------------------------
-      if (showRegionLabels) {
-        for (const region of regions) {
-          if (region.tier !== "local") continue;
-          if (!region.labelPosition) continue;
+          const [x, z] = geoToWorld(city.lat, city.lng);
+          return (
+            <Html key={city.id} position={[x, LABEL_Y + 2, z]} center distanceFactor={200}>
+              <span style={{ ...LABEL_STYLE, fontSize: "11px" }}>{city.name}</span>
+            </Html>
+          );
+        })}
 
-          const entity = viewer.entities.add({
-            name: region.name + " (label)",
-            position: Cesium.Cartesian3.fromDegrees(
-              region.labelPosition[1],
-              region.labelPosition[0]
-            ),
-            label: {
-              text: region.name,
-              font: "bold 15pt Georgia",
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#fff8e8"),
-              outlineColor: Cesium.Color.fromCssColorString("#1a0a00"),
-              outlineWidth: 5,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-              verticalOrigin: Cesium.VerticalOrigin.CENTER,
-              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
-            },
-          });
-          entityRefs.current.push(entity);
-        }
-      }
-
-      // -----------------------------------------------------------------------
-      // River labels
-      // -----------------------------------------------------------------------
-      if (showRiverLabels) {
-        for (const river of rivers) {
-          if (!river.labelPosition) continue;
-
-          const entity = viewer.entities.add({
-            name: river.name + " (label)",
-            position: Cesium.Cartesian3.fromDegrees(
-              river.labelPosition[1],
-              river.labelPosition[0]
-            ),
-            label: {
-              text: river.name,
-              font: "italic 12pt Georgia",
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#c8e8ff"),
-              outlineColor: Cesium.Color.fromCssColorString("#0a1a2a"),
-              outlineWidth: 4,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-              verticalOrigin: Cesium.VerticalOrigin.CENTER,
-              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
-            },
-          });
-          entityRefs.current.push(entity);
-        }
-
-        // ── Static sea / lake labels (always shown with river labels) ───────
-        const waterBodies = [
-          { name: "Dead Sea",         lng: 35.50, lat: 31.40 },
-          { name: "Sea of Galilee",   lng: 35.60, lat: 32.83 },
-          { name: "Mediterranean Sea",lng: 33.80, lat: 32.30 },
-          { name: "Red Sea",          lng: 32.80, lat: 27.50 },
-          { name: "Gulf of Aqaba",    lng: 34.92, lat: 29.30 },
-        ];
-        for (const wb of waterBodies) {
-          const entity = viewer.entities.add({
-            name: wb.name + " (label)",
-            position: Cesium.Cartesian3.fromDegrees(wb.lng, wb.lat),
-            label: {
-              text: wb.name,
-              font: "italic bold 13pt Georgia",
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#a8d8f0"),
-              outlineColor: Cesium.Color.fromCssColorString("#08162a"),
-              outlineWidth: 5,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-              verticalOrigin: Cesium.VerticalOrigin.CENTER,
-              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
-            },
-          });
-          entityRefs.current.push(entity);
-        }
-      }
-
-      // -----------------------------------------------------------------------
-      // City labels — only for tiers whose pin layer is also visible
-      // -----------------------------------------------------------------------
-      if (showCityLabels) {
-        for (const city of cities) {
-          const tier = city.tier ?? "minor";
-
-          if (tier === "major" && !showMajorCities) continue;
-          if (tier === "minor" && !showMinorCities) continue;
-          if (tier === "archaeological" && !showArchaeologicalCities) continue;
-
-          const entity = viewer.entities.add({
-            name: city.name + " (label)",
-            position: Cesium.Cartesian3.fromDegrees(city.lng, city.lat),
-            label: {
-              text: city.name,
-              font: "11pt Georgia",
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#fff8e8"),
-              outlineColor: Cesium.Color.fromCssColorString("#1a0a00"),
-              outlineWidth: 4,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-              verticalOrigin: Cesium.VerticalOrigin.TOP,
-              pixelOffset: new Cesium.Cartesian2(0, 10),
-              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
-            },
-          });
-          entityRefs.current.push(entity);
-        }
-      }
-
-      // -----------------------------------------------------------------------
-      // Tribe labels
-      // -----------------------------------------------------------------------
-      if (showTribeLabels) {
-        for (const tribe of tribes) {
-          if (!tribe.labelPosition) continue;
-
-          const entity = viewer.entities.add({
-            name: tribe.name + " (label)",
-            position: Cesium.Cartesian3.fromDegrees(
-              tribe.labelPosition[1],
-              tribe.labelPosition[0]
-            ),
-            label: {
-              text: tribe.name,
-              font: "italic bold 13pt Georgia",
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#f0ffe8"),
-              outlineColor: Cesium.Color.fromCssColorString("#0a1a00"),
-              outlineWidth: 4,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-              verticalOrigin: Cesium.VerticalOrigin.CENTER,
-              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
-            },
-          });
-          entityRefs.current.push(entity);
-        }
-      }
-    })();
-
-    return () => {
-      entityRefs.current.forEach((e) => {
-        try {
-          viewer.entities.remove(e);
-        } catch {}
-      });
-      entityRefs.current = [];
-    };
-  }, [
-    viewer,
-    showRegionLabels,
-    showRiverLabels,
-    showCityLabels,
-    showTribeLabels,
-    showMajorCities,
-    showMinorCities,
-    showArchaeologicalCities,
-  ]);
-
-  return null;
+      {/* Tribe labels */}
+      {showTribeLabels &&
+        tribes
+          .filter((t) => t.labelPosition)
+          .map((tribe) => {
+            const [lat, lng] = tribe.labelPosition;
+            const [x, z] = geoToWorld(lat, lng);
+            return (
+              <Html key={tribe.id} position={[x, LABEL_Y, z]} center distanceFactor={200}>
+                <span style={TRIBE_LABEL_STYLE}>{tribe.name}</span>
+              </Html>
+            );
+          })}
+    </group>
+  );
 }

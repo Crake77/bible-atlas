@@ -1,0 +1,212 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import * as THREE from "three";
+import { buildHeightmap } from "@/lib/terrain/buildHeightmap";
+import { geoToWorld } from "@/lib/terrain/constants";
+import TerrainMesh from "./TerrainMesh";
+import RiverLayer from "./RiverLayer";
+import RegionLayer from "./RegionLayer";
+import CityLayer from "./CityLayer";
+import LabelLayer from "./LabelLayer";
+import TribeLayer from "./TribeLayer";
+import RouteLayer from "./RouteLayer";
+import SpecialSiteLayer from "./SpecialSiteLayer";
+import MovementLayer from "./MovementLayer";
+import LayerPanel from "@/components/ui/LayerPanel";
+
+// Camera target: center over Israel [lat=31.5, lng=35.5]
+const [centerX, centerZ] = geoToWorld(31.5, 35.5);
+
+const INIT_CAMERA_POS: [number, number, number] = [centerX, 350, centerZ + 150];
+
+const btn =
+  "w-9 h-9 flex items-center justify-center rounded bg-black/60 hover:bg-black/80 " +
+  "text-white text-base leading-none select-none transition-colors active:bg-white/20";
+
+export default function TerrainScene() {
+  const [heightmap, setHeightmap] = useState<Float32Array | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+
+  useEffect(() => {
+    buildHeightmap()
+      .then(setHeightmap)
+      .catch((e: unknown) => {
+        setLoadError(e instanceof Error ? e.message : "Unknown error loading terrain");
+      });
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current as OrbitControlsImpl & {
+      dollyIn?: (scale: number) => void;
+      dollyOut?: (scale: number) => void;
+    };
+    controls.dollyIn?.(1.25);
+    controls.update();
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current as OrbitControlsImpl & {
+      dollyIn?: (scale: number) => void;
+      dollyOut?: (scale: number) => void;
+    };
+    controls.dollyOut?.(1.25);
+    controls.update();
+  }, []);
+
+  const tiltUp = useCallback(() => {
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current;
+    const spherical = new THREE.Spherical().setFromVector3(
+      controls.object.position.clone().sub(controls.target)
+    );
+    spherical.phi = Math.max(0.1, spherical.phi - 0.08);
+    const newPos = new THREE.Vector3()
+      .setFromSpherical(spherical)
+      .add(controls.target);
+    controls.object.position.copy(newPos);
+    controls.update();
+  }, []);
+
+  const tiltDown = useCallback(() => {
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current;
+    const spherical = new THREE.Spherical().setFromVector3(
+      controls.object.position.clone().sub(controls.target)
+    );
+    spherical.phi = Math.min(Math.PI * 0.45, spherical.phi + 0.08);
+    const newPos = new THREE.Vector3()
+      .setFromSpherical(spherical)
+      .add(controls.target);
+    controls.object.position.copy(newPos);
+    controls.update();
+  }, []);
+
+  const rotateLeft = useCallback(() => {
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current;
+    const spherical = new THREE.Spherical().setFromVector3(
+      controls.object.position.clone().sub(controls.target)
+    );
+    spherical.theta -= 0.08;
+    const newPos = new THREE.Vector3()
+      .setFromSpherical(spherical)
+      .add(controls.target);
+    controls.object.position.copy(newPos);
+    controls.update();
+  }, []);
+
+  const rotateRight = useCallback(() => {
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current;
+    const spherical = new THREE.Spherical().setFromVector3(
+      controls.object.position.clone().sub(controls.target)
+    );
+    spherical.theta += 0.08;
+    const newPos = new THREE.Vector3()
+      .setFromSpherical(spherical)
+      .add(controls.target);
+    controls.object.position.copy(newPos);
+    controls.update();
+  }, []);
+
+  const resetView = useCallback(() => {
+    if (!controlsRef.current) return;
+    controlsRef.current.object.position.set(...INIT_CAMERA_POS);
+    controlsRef.current.target.set(centerX, 0, centerZ);
+    controlsRef.current.update();
+  }, []);
+
+  return (
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {/* Loading / error overlay */}
+      {!heightmap && !loadError && (
+        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center z-30">
+          <p className="text-amber-200/80 text-xl font-serif tracking-wide mb-3">
+            Loading terrain…
+          </p>
+          <p className="text-white/40 text-sm font-sans">
+            Fetching elevation tiles
+          </p>
+        </div>
+      )}
+      {loadError && (
+        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center z-30">
+          <p className="text-red-400 text-lg font-serif mb-2">Terrain load failed</p>
+          <p className="text-white/50 text-sm font-sans">{loadError}</p>
+        </div>
+      )}
+
+      {/* R3F Canvas — always mounted so it initialises */}
+      <Canvas
+        style={{ width: "100%", height: "100%" }}
+        camera={{
+          position: INIT_CAMERA_POS,
+          fov: 45,
+          near: 0.1,
+          far: 5000,
+        }}
+        shadows
+      >
+        <ambientLight intensity={0.6} />
+        <directionalLight
+          position={[200, 300, 100]}
+          intensity={1.2}
+          castShadow
+          shadow-mapSize={[2048, 2048]}
+        />
+
+        {heightmap && <TerrainMesh elevations={heightmap} />}
+
+        {/* Data layers */}
+        <RiverLayer />
+        <RegionLayer />
+        <TribeLayer />
+        <RouteLayer />
+        <CityLayer />
+        <SpecialSiteLayer />
+        <MovementLayer />
+        <LabelLayer />
+
+        <OrbitControls
+          ref={controlsRef}
+          minDistance={30}
+          maxDistance={800}
+          maxPolarAngle={Math.PI * 0.45}
+          minPolarAngle={0.1}
+          enableDamping
+          dampingFactor={0.05}
+          target={[centerX, 0, centerZ]}
+        />
+      </Canvas>
+
+      {/* Layer panel overlay (outside Canvas — pure DOM) */}
+      {heightmap && <LayerPanel />}
+
+      {/* On-screen camera controls — bottom-right corner */}
+      <div className="absolute bottom-8 right-3 flex flex-col gap-2 z-10">
+        <div className="flex flex-col items-center gap-1">
+          <button className={btn} onClick={zoomIn}  title="Zoom in">＋</button>
+          <button className={btn} onClick={zoomOut} title="Zoom out">－</button>
+        </div>
+        <div className="h-px bg-white/20 mx-1" />
+        <div className="flex flex-col items-center gap-1">
+          <button className={btn} onClick={tiltUp}     title="Tilt up">▲</button>
+          <div className="flex gap-1">
+            <button className={btn} onClick={rotateLeft}  title="Rotate left">◀</button>
+            <button className={btn} onClick={rotateRight} title="Rotate right">▶</button>
+          </div>
+          <button className={btn} onClick={tiltDown}   title="Tilt down">▼</button>
+        </div>
+        <div className="h-px bg-white/20 mx-1" />
+        <button className={btn} onClick={resetView} title="Reset view">⌂</button>
+      </div>
+    </div>
+  );
+}
