@@ -49,22 +49,29 @@ export default function TerrainMap() {
       // Dead Sea depression becomes visually striking; Mt. Hermon towers.
       viewer.scene.verticalExaggeration = 6.0;
 
-      // ── Swap imagery: remove satellite, add Natural Earth II ───────────────
-      // Natural Earth II (Cesium ion asset 3845) is a clean artistic base
-      // with no modern roads, labels, or political borders.
+      // ── Swap imagery: remove satellite, add historical base layer ──────────
+      // Preferred: Natural Earth II via Cesium ion (asset 3845) — clean artistic
+      // base with no modern roads, labels, or political borders.
+      // Fallback: ArcGIS World Physical Map — also has no roads/borders, free, no token needed.
       viewer.imageryLayers.removeAll();
+      let imageryLoaded = false;
       if (process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN) {
         try {
           const naturalEarth = await Cesium.IonImageryProvider.fromAssetId(3845);
           viewer.imageryLayers.addImageryProvider(naturalEarth);
+          imageryLoaded = true;
         } catch {
-          // Fallback: plain earth color if Natural Earth II isn't available
-          viewer.imageryLayers.addImageryProvider(
-            new Cesium.SingleTileImageryProvider({
-              url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-              rectangle: Cesium.Rectangle.MAX_VALUE,
-            })
+          // fall through to ArcGIS fallback
+        }
+      }
+      if (!imageryLoaded) {
+        try {
+          const physicalMap = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+            "https://services.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer"
           );
+          viewer.imageryLayers.addImageryProvider(physicalMap);
+        } catch {
+          // Last resort: keep Cesium's default blue ocean rather than crashing
         }
       }
 
