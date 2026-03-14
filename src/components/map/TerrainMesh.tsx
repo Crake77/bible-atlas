@@ -157,8 +157,15 @@ function isSeaOfGalilee(lat: number, lng: number): boolean {
  * (elev > -5m) — deeper values in that bbox are the actual Mediterranean.
  */
 function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
-  // Jordan Rift Valley corridor — can be -430m and still be dry land
-  if (lat >= 30.3 && lat <= 33.5 && lng >= 35.0 && lng <= 36.3) return true;
+  // Jordan Rift Valley — split into two sub-rects to avoid catching the
+  // Lebanese / Israeli Mediterranean coast (shore is at lng ~34.85–35.25).
+  // Southern section (Arabah + Dead Sea + lower Jordan): can reach lng 35.0
+  // since the coast at lat<32.5 is west of our mesh resolution.
+  if (lat >= 30.2 && lat <= 32.5 && lng >= 35.0 && lng <= 36.3) return true;
+  // Northern section (Sea of Galilee + upper Jordan + Hula Valley): start
+  // at 35.35 — the Lebanese coast at lat 32.5–33.5 is at lng 35.05–35.30,
+  // so 35.35 keeps us east of the sea.
+  if (lat >= 32.5 && lat <= 33.3 && lng >= 35.35 && lng <= 36.3) return true;
   // Nile Delta: only catch true delta lowlands; Mediterranean shelf is > 5m deep
   if (elev > -5 && lat >= 29.8 && lat <= 31.0 && lng >= 30.5 && lng <= 32.0) return true;
   return false;
@@ -175,9 +182,10 @@ function getBiomeColor(lat: number, lng: number, elev: number): RGB {
   // These areas are genuinely terrestrial; fall through to biome coloring.
   // (Their geometry is clamped above y=0 in the vertex loop below so the
   //  water plane doesn't bleed through them.)
-  if (elev < 0 && isBelowSeaLevelLand(lat, lng, elev)) {
+  if (elev <= 0 && isBelowSeaLevelLand(lat, lng, elev)) {
     // treat elevation as 0 for biome purposes — still picks up jordan-valley biome
-  } else if (elev < 0) {
+  } else if (elev <= 0) {
+    // elev=0 catches SRTM pixels where open sea is coded as 0m elevation
     return OCEAN_RGB;
   }
 
@@ -268,11 +276,11 @@ export default function TerrainMesh({ elevations }: Props) {
         const elev = elevations[vi] ?? 0;
 
         // Below-sea-level land (Jordan Rift corridor, Nile Delta) must sit
-        // just above the water plane (y=-0.05) so it renders as terrain, not
+        // just above the water plane (y=0) so it renders as terrain, not
         // as underwater. The actual lakes (Dead Sea, Sea of Galilee) keep their
         // true negative y so the reflective water plane appears above them.
         const isLake = isDeadSea(lat, lng) || isSeaOfGalilee(lat, lng);
-        const wy = (!isLake && elev < 0 && isBelowSeaLevelLand(lat, lng, elev))
+        const wy = (!isLake && elev <= 0 && isBelowSeaLevelLand(lat, lng, elev))
           ? 0.02                  // just above water plane → terrain visible
           : elev * ELEVATION_SCALE;
 

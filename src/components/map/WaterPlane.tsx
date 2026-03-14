@@ -17,13 +17,16 @@ import { PLANE_W, PLANE_H } from "@/lib/terrain/constants";
  */
 export default function WaterPlane() {
   return (
-    <mesh position={[0, -0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[PLANE_W * 4, PLANE_H * 4]} />
       <meshStandardMaterial
         color="#1a3a6a"
         roughness={0.08}
         metalness={0.35}
         side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={1}
+        polygonOffsetUnits={1}
       />
     </mesh>
   );
