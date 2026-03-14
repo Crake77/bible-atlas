@@ -54,23 +54,44 @@ export default function TerrainMap() {
           ? Cesium.Terrain.fromWorldTerrain()
           : undefined,
 
-        // Hide UI controls we don't need yet
+        // Keep the scene in full 3D globe mode (not 2D map or Columbus view)
+        sceneMode: Cesium.SceneMode.SCENE3D,
+
         baseLayerPicker: false,
         geocoder: false,
         homeButton: false,
         sceneModePicker: false,
-        navigationHelpButton: false,
+        // Keep the help button so users can see the mouse/touch controls
+        navigationHelpButton: true,
         animation: false,
         timeline: false,
         fullscreenButton: false,
         infoBox: false,
       });
 
-      // Start the camera over the ancient Near East
-      // Coordinates: ~35°E, 31°N (centered on Israel/Jordan area), 800km altitude
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(35.5, 31.0, 800000),
-        duration: 0, // Instant on first load
+      // Make tilting easier: allow tilt on left-click drag (not just middle-click)
+      viewer.scene.screenSpaceCameraController.tiltEventTypes = [
+        Cesium.CameraEventType.MIDDLE_DRAG,
+        Cesium.CameraEventType.PINCH,
+        {
+          eventType: Cesium.CameraEventType.LEFT_DRAG,
+          modifier: Cesium.KeyboardEventModifier.CTRL,
+        },
+        {
+          eventType: Cesium.CameraEventType.RIGHT_DRAG,
+          modifier: Cesium.KeyboardEventModifier.CTRL,
+        },
+      ];
+
+      // Start the camera over the ancient Near East at a tilted angle
+      // so the 3D terrain is immediately visible
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(35.5, 28.0, 500000),
+        orientation: {
+          heading: Cesium.Math.toRadians(0),   // North up
+          pitch: Cesium.Math.toRadians(-45),   // 45° tilt down — shows terrain depth
+          roll: 0,
+        },
       });
     })();
 
