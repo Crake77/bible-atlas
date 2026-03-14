@@ -11,10 +11,31 @@ import type { Viewer } from "cesium";
  * - Natural Earth II base imagery (no modern roads or borders)
  * - All data layer components mounted when viewer is ready
  */
+// Grid of [lng, lat] positions covering the Near East at 150km altitude.
+// The pre-load tour visits each one and waits for all tiles to finish
+// loading before moving on — so the entire region is resident in the
+// tile cache before the user can interact with the map.
+const PRELOAD_GRID: [number, number][] = [
+  [35.5, 33.8],  // Galilee / Lebanon / Hermon
+  [36.5, 32.5],  // Bashan / Gilead north
+  [35.8, 32.0],  // Samaria / Jordan Valley
+  [35.2, 31.8],  // Jerusalem / Jericho / Dead Sea
+  [36.2, 31.2],  // Moab / Ammon
+  [35.0, 30.5],  // Judah / Negev north
+  [34.8, 29.5],  // Negev south / Sinai
+  [37.5, 29.0],  // Edom / Midian
+  [34.5, 31.5],  // Philistia / Mediterranean coast
+  [32.5, 31.0],  // Egypt / Nile Delta
+  [38.5, 33.5],  // Aram / Damascus / Hauran
+  [41.0, 34.0],  // Upper Euphrates / Assyria approach
+  [44.5, 33.0],  // Babylon / Lower Mesopotamia
+];
+
 export default function TerrainMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const [viewerReady, setViewerReady] = useState(false);
+  const [tilesReady, setTilesReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !containerRef.current) return;
@@ -66,13 +87,11 @@ export default function TerrainMap() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (viewer.scene.globe as any).dynamicScreenSpaceError = false;
 
-      // ── Keep Near East tiles in memory — prevents LOD popping ─────────────
-      // tileCacheSize holds 2000 tiles in RAM. Near East at max detail is
-      // ~400-600 tiles at MSE=0.5, so all loaded tiles stay resident across
-      // zoom changes without eviction.
+      // ── Keep Near East tiles in memory — pre-load tour fills this cache ──────
+      // 5000 tiles holds the entire pre-loaded Near East region without eviction.
       // preloadSiblings/preloadAncestors fetch adjacent + parent tiles before
-      // the camera reaches them, so transitions are already loaded.
-      viewer.scene.globe.tileCacheSize = 2000;
+      // the camera reaches them for any newly-visited areas.
+      viewer.scene.globe.tileCacheSize = 5000;
       viewer.scene.globe.preloadSiblings = true;
       viewer.scene.globe.preloadAncestors = true;
       viewer.scene.globe.loadingDescendantLimit = 32;  // load more tiles in parallel
@@ -243,6 +262,50 @@ export default function TerrainMap() {
         },
       });
 
+      // ── Pre-load tour — visit every sub-region, wait for tiles ───────────
+      // CesiumJS only loads tiles that are currently in view. Without this tour,
+      // tiles load on-demand as the user navigates — causing pop-in. We visit
+      // each grid position at 150km altitude (just above the 80km zoom floor),
+      // wait until Globe.tilesLoaded=true (all tiles for that view are resident),
+      // then move on. After the tour, the entire Near East is in the 5000-tile
+      // cache and won't need to load again during the session.
+      for (const [lng, lat] of PRELOAD_GRID) {
+        if (!viewerRef.current) break;
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(lng, lat, 150_000),
+          orientation: {
+            heading: Cesium.Math.toRadians(0),
+            pitch: Cesium.Math.toRadians(-50),
+            roll: 0,
+          },
+        });
+        // Wait for this view's tiles to finish loading (10s max per position)
+        await new Promise<void>(resolve => {
+          const deadline = setTimeout(resolve, 10_000);
+          const poll = setInterval(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((viewer.scene.globe as any).tilesLoaded) {
+              clearInterval(poll);
+              clearTimeout(deadline);
+              resolve();
+            }
+          }, 150);
+        });
+      }
+
+      // Return to the default overview
+      if (viewerRef.current) {
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(35.5, 30.0, 600_000),
+          orientation: {
+            heading: Cesium.Math.toRadians(0),
+            pitch: Cesium.Math.toRadians(-40),
+            roll: 0,
+          },
+        });
+      }
+
+      setTilesReady(true);
       setViewerReady(true);
     })();
 
@@ -250,6 +313,7 @@ export default function TerrainMap() {
       viewerRef.current?.destroy();
       viewerRef.current = null;
       setViewerReady(false);
+      setTilesReady(false);
     };
   }, []);
 
@@ -298,8 +362,20 @@ export default function TerrainMap() {
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      {/* Cesium canvas */}
+      {/* Cesium canvas — always mounted so tiles can load during the pre-load tour */}
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+
+      {/* Loading overlay — covers the tile-tour camera jumping, shows progress */}
+      {!tilesReady && (
+        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center z-30">
+          <p className="text-amber-200/80 text-xl font-serif tracking-wide mb-3">
+            Loading terrain…
+          </p>
+          <p className="text-white/40 text-sm font-sans">
+            Pre-loading the ancient Near East
+          </p>
+        </div>
+      )}
 
       {/* Data layers — mounted after viewer initialises */}
       {viewerReady && viewer && (
