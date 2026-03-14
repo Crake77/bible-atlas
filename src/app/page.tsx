@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import BibleReader from "@/components/reader/BibleReader";
 
-// Load the 3D map only in the browser — Three.js doesn't work on the server
+// Load the 3D map only in the browser — CesiumJS requires browser APIs
 const TerrainMap = dynamic(() => import("@/components/map/TerrainMap"), {
   ssr: false,
   loading: () => (

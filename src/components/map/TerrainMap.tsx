@@ -1,0 +1,89 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+
+/**
+ * TerrainMap
+ *
+ * Renders an interactive 3D globe using CesiumJS, centered on the ancient Near East.
+ *
+ * Controls:
+ *   - Left-click + drag  → rotate / pan
+ *   - Right-click + drag → zoom
+ *   - Scroll wheel       → zoom
+ *   - Middle-click drag  → tilt
+ *
+ * Terrain:
+ *   - Default: Bing Maps satellite imagery with flat (ellipsoid) terrain
+ *   - To enable real NASA SRTM elevation data, add a free Cesium ion token:
+ *       1. Sign up at https://cesium.com/ion/ (free)
+ *       2. Copy your default token from the dashboard
+ *       3. Add NEXT_PUBLIC_CESIUM_ION_TOKEN=your_token_here to a .env.local file
+ *
+ * Next steps:
+ *   - Add city marker pins from src/data/geography/cities.ts
+ *   - Animate camera to focus on a chapter's region when selected in the reader
+ *   - Draw movement arrows for journeys and military campaigns
+ */
+export default function TerrainMap() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Guard: only runs in the browser, never on the server
+    if (typeof window === "undefined" || !containerRef.current) return;
+
+    let viewer: import("cesium").Viewer | null = null;
+
+    (async () => {
+      // Dynamically import CesiumJS so it only loads in the browser
+      const Cesium = await import("cesium");
+
+      // Use the Cesium ion token from environment variables if provided
+      // Without a token, Cesium uses a basic offline base layer
+      if (process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN) {
+        Cesium.Ion.defaultAccessToken =
+          process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
+      }
+
+      if (!containerRef.current) return;
+
+      viewer = new Cesium.Viewer(containerRef.current, {
+        // Terrain: use world terrain (real elevation) if a token exists,
+        // otherwise fall back to a flat ellipsoid
+        terrain: process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN
+          ? Cesium.Terrain.fromWorldTerrain()
+          : undefined,
+
+        // Hide UI controls we don't need yet
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        navigationHelpButton: false,
+        animation: false,
+        timeline: false,
+        fullscreenButton: false,
+        infoBox: false,
+      });
+
+      // Start the camera over the ancient Near East
+      // Coordinates: ~35°E, 31°N (centered on Israel/Jordan area), 800km altitude
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(35.5, 31.0, 800000),
+        duration: 0, // Instant on first load
+      });
+    })();
+
+    // Cleanup: destroy the Cesium viewer when the component unmounts
+    return () => {
+      viewer?.destroy();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", position: "relative" }}
+    />
+  );
+}

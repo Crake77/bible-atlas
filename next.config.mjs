@@ -1,7 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // React Three Fiber needs this to work inside Next.js
-  transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
+  webpack(config, { webpack }) {
+    // Tell CesiumJS where its static assets are served from (public/cesium/)
+    config.plugins.push(
+      new webpack.DefinePlugin({
+        CESIUM_BASE_URL: JSON.stringify("/cesium"),
+      })
+    );
+    return config;
+  },
 };
 
 export default nextConfig;
