@@ -65,15 +65,16 @@ export default function LabelLayer({ viewer }: Props) {
             ),
             label: {
               text: region.name,
-              font: "bold 14pt Georgia",
+              font: "bold 15pt Georgia",
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#f5e6c8").withAlpha(0.9),
-              outlineColor: Cesium.Color.BLACK.withAlpha(0.8),
-              outlineWidth: 2,
+              fillColor: Cesium.Color.fromCssColorString("#fff8e8"),
+              outlineColor: Cesium.Color.fromCssColorString("#1a0a00"),
+              outlineWidth: 5,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
               horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
               verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
             },
           });
           entityRefs.current.push(entity);
@@ -95,15 +96,45 @@ export default function LabelLayer({ viewer }: Props) {
             ),
             label: {
               text: river.name,
-              font: "12pt Georgia",
+              font: "italic 12pt Georgia",
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#aad4f5").withAlpha(0.85),
-              outlineColor: Cesium.Color.BLACK.withAlpha(0.7),
-              outlineWidth: 2,
+              fillColor: Cesium.Color.fromCssColorString("#c8e8ff"),
+              outlineColor: Cesium.Color.fromCssColorString("#0a1a2a"),
+              outlineWidth: 4,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
               horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
               verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
+            },
+          });
+          entityRefs.current.push(entity);
+        }
+
+        // ── Static sea / lake labels (always shown with river labels) ───────
+        const waterBodies = [
+          { name: "Dead Sea",         lng: 35.50, lat: 31.40 },
+          { name: "Sea of Galilee",   lng: 35.60, lat: 32.83 },
+          { name: "Mediterranean Sea",lng: 33.80, lat: 32.30 },
+          { name: "Red Sea",          lng: 32.80, lat: 27.50 },
+          { name: "Gulf of Aqaba",    lng: 34.92, lat: 29.30 },
+        ];
+        for (const wb of waterBodies) {
+          const entity = viewer.entities.add({
+            name: wb.name + " (label)",
+            position: Cesium.Cartesian3.fromDegrees(wb.lng, wb.lat),
+            label: {
+              text: wb.name,
+              font: "italic bold 13pt Georgia",
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: Cesium.Color.fromCssColorString("#a8d8f0"),
+              outlineColor: Cesium.Color.fromCssColorString("#08162a"),
+              outlineWidth: 5,
+              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+              verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
             },
           });
           entityRefs.current.push(entity);
@@ -128,14 +159,15 @@ export default function LabelLayer({ viewer }: Props) {
               text: city.name,
               font: "11pt Georgia",
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.fromCssColorString("#f5e6c8").withAlpha(0.9),
-              outlineColor: Cesium.Color.BLACK.withAlpha(0.8),
-              outlineWidth: 2,
+              fillColor: Cesium.Color.fromCssColorString("#fff8e8"),
+              outlineColor: Cesium.Color.fromCssColorString("#1a0a00"),
+              outlineWidth: 4,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
               horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
               verticalOrigin: Cesium.VerticalOrigin.TOP,
               pixelOffset: new Cesium.Cartesian2(0, 10),
+              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
             },
           });
           entityRefs.current.push(entity);
@@ -159,13 +191,14 @@ export default function LabelLayer({ viewer }: Props) {
               text: tribe.name,
               font: "italic bold 13pt Georgia",
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: Cesium.Color.WHITE.withAlpha(0.75),
-              outlineColor: Cesium.Color.BLACK.withAlpha(0.65),
-              outlineWidth: 2,
+              fillColor: Cesium.Color.fromCssColorString("#f0ffe8"),
+              outlineColor: Cesium.Color.fromCssColorString("#0a1a00"),
+              outlineWidth: 4,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
               horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
               verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              eyeOffset: new Cesium.Cartesian3(0, 0, -5000),
             },
           });
           entityRefs.current.push(entity);

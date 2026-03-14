@@ -30,7 +30,7 @@ export default function TerrainMap() {
 
       const viewer = new Cesium.Viewer(containerRef.current, {
         terrain: process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN
-          ? Cesium.Terrain.fromWorldTerrain()
+          ? Cesium.Terrain.fromWorldTerrain({ requestVertexNormals: true })
           : undefined,
         sceneMode: Cesium.SceneMode.SCENE3D,
         baseLayerPicker: false,
@@ -44,10 +44,18 @@ export default function TerrainMap() {
         infoBox: false,
       });
 
-      // ── Vertical exaggeration ×6 ───────────────────────────────────────────
-      // This scales all terrain heights 6× while lat/lng stays accurate.
-      // Dead Sea depression becomes visually striking; Mt. Hermon towers.
-      viewer.scene.verticalExaggeration = 6.0;
+      // ── Vertical exaggeration ×12 ─────────────────────────────────────────
+      // Doubles terrain drama: Dead Sea depression ~-430m becomes -5160m visually,
+      // Mt. Hermon ~2814m becomes 33768m — Skyrim-scale ridge silhouettes.
+      viewer.scene.verticalExaggeration = 12.0;
+
+      // ── Terrain quality & lighting ────────────────────────────────────────
+      // Lower maximumScreenSpaceError = more terrain tiles loaded at close zoom.
+      // enableLighting adds sun-angle shadows for Skyrim-style depth.
+      viewer.scene.globe.maximumScreenSpaceError = 1.5;
+      viewer.scene.globe.enableLighting = true;
+      viewer.scene.globe.dynamicAtmosphereLighting = true;
+      viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
 
       // ── Swap imagery: remove satellite, add historical base layer ──────────
       // Preferred: Natural Earth II via Cesium ion (asset 3845) — clean artistic
