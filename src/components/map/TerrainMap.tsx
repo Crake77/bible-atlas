@@ -50,17 +50,38 @@ export default function TerrainMap() {
       viewer.scene.verticalExaggeration = 12.0;
 
       // ── Terrain quality & lighting ────────────────────────────────────────
-      viewer.scene.globe.maximumScreenSpaceError = 1.0;   // high detail tiles
+      // maximumScreenSpaceError 0.5 forces high-detail tiles to load from much
+      // farther away than default (2.0) or our previous value (1.0). This means
+      // tiles are already loaded at full detail before you zoom into them —
+      // the primary fix for visible pop-in with ×12 vertical exaggeration.
+      viewer.scene.globe.maximumScreenSpaceError = 0.5;
       viewer.scene.globe.enableLighting = true;
       viewer.scene.globe.dynamicAtmosphereLighting = true;
       viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
 
+      // ── Lock LOD — no quality drops during camera movement ────────────────
+      // dynamicScreenSpaceError=true (Cesium default) reduces tile quality when
+      // the camera is moving fast to maintain frame rate, then snaps back when
+      // you stop — that snap IS the pop-in. Disabling it keeps consistent quality.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (viewer.scene.globe as any).dynamicScreenSpaceError = false;
+
       // ── Keep Near East tiles in memory — prevents LOD popping ─────────────
-      // tileCacheSize holds 800 tiles in RAM. The Near East at max detail is
-      // ~200-300 tiles, so once loaded they stay loaded across zoom changes.
-      // preloadSiblings fetches adjacent tiles before the camera reaches them.
-      viewer.scene.globe.tileCacheSize = 800;
+      // tileCacheSize holds 2000 tiles in RAM. Near East at max detail is
+      // ~400-600 tiles at MSE=0.5, so all loaded tiles stay resident across
+      // zoom changes without eviction.
+      // preloadSiblings/preloadAncestors fetch adjacent + parent tiles before
+      // the camera reaches them, so transitions are already loaded.
+      viewer.scene.globe.tileCacheSize = 2000;
       viewer.scene.globe.preloadSiblings = true;
+      viewer.scene.globe.preloadAncestors = true;
+      viewer.scene.globe.loadingDescendantLimit = 32;  // load more tiles in parallel
+
+      // ── Disable fog — prevents atmospheric fade-in/fade-out during zoom ───
+      // Fog causes terrain and tiles to visually appear/disappear as you move,
+      // compounding the perception of pop-in.
+      viewer.scene.fog.enabled = false;
+      viewer.scene.globe.showGroundAtmosphere = false;
 
       // ── Swap imagery: remove satellite, add historical base layer ──────────
       // Preferred: Natural Earth II via Cesium ion (asset 3845) — clean artistic
