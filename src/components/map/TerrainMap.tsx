@@ -50,12 +50,17 @@ export default function TerrainMap() {
       viewer.scene.verticalExaggeration = 12.0;
 
       // ── Terrain quality & lighting ────────────────────────────────────────
-      // Lower maximumScreenSpaceError = more terrain tiles loaded at close zoom.
-      // enableLighting adds sun-angle shadows for Skyrim-style depth.
-      viewer.scene.globe.maximumScreenSpaceError = 1.5;
+      viewer.scene.globe.maximumScreenSpaceError = 1.0;   // high detail tiles
       viewer.scene.globe.enableLighting = true;
       viewer.scene.globe.dynamicAtmosphereLighting = true;
       viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
+
+      // ── Keep Near East tiles in memory — prevents LOD popping ─────────────
+      // tileCacheSize holds 800 tiles in RAM. The Near East at max detail is
+      // ~200-300 tiles, so once loaded they stay loaded across zoom changes.
+      // preloadSiblings fetches adjacent tiles before the camera reaches them.
+      viewer.scene.globe.tileCacheSize = 800;
+      viewer.scene.globe.preloadSiblings = true;
 
       // ── Swap imagery: remove satellite, add historical base layer ──────────
       // Preferred: Natural Earth II via Cesium ion (asset 3845) — clean artistic
@@ -84,6 +89,19 @@ export default function TerrainMap() {
       }
 
       viewerRef.current = viewer;
+
+      // ── Camera altitude cap — keeps LOD consistent ────────────────────────
+      // At >1200km the Near East drops to ~4 low-res tiles and looks terrible.
+      // We clamp to 1200km so users can see the whole region + Egypt/Babylon
+      // context but can't zoom to full-globe view where terrain quality breaks.
+      const MAX_CAMERA_HEIGHT = 1_200_000; // metres
+      viewer.scene.postRender.addEventListener(() => {
+        if (!viewerRef.current) return;
+        const cart = viewerRef.current.camera.positionCartographic;
+        if (cart.height > MAX_CAMERA_HEIGHT) {
+          viewerRef.current.camera.zoomIn(cart.height - MAX_CAMERA_HEIGHT);
+        }
+      });
 
       // Start over the ancient Near East at a 45° tilt so terrain drama is visible immediately
       viewer.camera.setView({
