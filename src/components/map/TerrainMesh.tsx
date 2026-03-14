@@ -20,39 +20,140 @@ import {
 
 type RGB = [number, number, number];
 
-/**
- * Look up the biome-based vertex color for a given lat/lng/elevation.
- * Uses historically-researched biome zones for the ancient Near East c.1000 BC.
- */
-function getBiomeColor(lat: number, lng: number, elev: number): RGB {
-  // Elevation overrides (regardless of biome polygon)
-  if (elev < 0) return OCEAN_RGB;
-  if (elev > 2800) return SNOW_RGB;
-  if (elev > 1800) return ALPINE_RGB;
+// ── Utility ───────────────────────────────────────────────────────────────────
 
-  // First-match biome lookup (sorted by priority descending)
-  let baseRGB: RGB = STEPPE_RGB; // semi-arid steppe fallback
-  outer: for (const biome of BIOMES_SORTED) {
-    for (const [minLat, maxLat, minLng, maxLng] of biome.rects) {
-      if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) {
-        baseRGB = biome.rgb;
-        break outer;
-      }
-    }
+function clamp(v: number, lo = 0, hi = 1): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+// ── Deterministic multi-octave noise ──────────────────────────────────────────
+// Organic, painterly texture — same lat/lng always gives same value.
+// 4 octaves produce coarse color patches + fine local variation.
+
+function hash2(x: number, y: number): number {
+  const v = Math.sin(x * 78.233 + y * 127.1) * 43758.5453;
+  return v - Math.floor(v); // 0–1
+}
+
+function fieldNoise(lat: number, lng: number): number {
+  return (
+    hash2(lat * 3.7,  lng * 4.1)  * 0.44 + // ~110km coarse patches
+    hash2(lat * 9.3,  lng * 10.7) * 0.28 + // ~45km mid features
+    hash2(lat * 21.1, lng * 22.7) * 0.17 + // ~20km fine detail
+    hash2(lat * 44.3, lng * 43.1) * 0.11   // ~10km micro variation
+  );
+}
+
+// ── HSL ↔ RGB ──────────────────────────────────────────────────────────────────
+// HSL-space modulation keeps hue locked (greens stay green, sands stay golden)
+// while independently varying brightness + saturation for artistic effect.
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h =
+    max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6 :
+    max === g ? ((b - r) / d + 2) / 6 :
+                ((r - g) / d + 4) / 6;
+  return [h, s, l];
+}
+
+function hue2rgb(p: number, q: number, t: number): number {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function hslToRgb(h: number, s: number, l: number): RGB {
+  if (s === 0) return [l, l, l];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)];
+}
+
+// ── Soft biome blending ────────────────────────────────────────────────────────
+// Hard bbox edges look like painted rectangles. Each biome fades in/out over
+// ~40km so adjacent zones blend naturally — forests melt into steppe, steppe
+// into desert — no straight boundary lines visible anywhere.
+
+const BLEND_SQ = 0.35 * 0.35; // squared ~40km radius (avoids sqrt in hot loop)
+
+function biomeWeight(lat: number, lng: number, rect: [number, number, number, number]): number {
+  const [minLat, maxLat, minLng, maxLng] = rect;
+  if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) return 1;
+  const dLat = Math.max(minLat - lat, 0, lat - maxLat);
+  const dLng = Math.max(minLng - lng, 0, lng - maxLng);
+  const dSq = dLat * dLat + dLng * dLng;
+  if (dSq >= BLEND_SQ) return 0;
+  const t = 1 - dSq / BLEND_SQ;
+  return t * t; // quadratic falloff — solid inside, soft at edges
+}
+
+// ── Master color function ──────────────────────────────────────────────────────
+
+function getBiomeColor(lat: number, lng: number, elev: number): RGB {
+  if (elev < 0) return OCEAN_RGB;
+
+  if (elev > 2800) {
+    // Textured snow — noise so peaks feel geological, not plastic-white
+    const n = fieldNoise(lat * 2, lng * 2);
+    const [h, s, l] = rgbToHsl(...SNOW_RGB);
+    return hslToRgb(h, s, clamp(l * (0.88 + n * 0.18)));
   }
 
-  // Elevation modulation: ±12% luminance for ridge/valley contrast
-  // 0 m → 0.88× (slightly darker valley floors)
-  // 750 m → 1.00× (base color)
-  // 1500 m → 1.12× (slightly brighter ridges)
-  const elevFrac = Math.min(1, Math.max(0, elev / 1500));
-  const factor = 0.88 + elevFrac * 0.24;
+  if (elev > 1800) {
+    // Alpine grey → snow with noise-driven transitions
+    const t = (elev - 1800) / 1000;
+    const n = fieldNoise(lat * 2, lng * 2);
+    return [
+      clamp(ALPINE_RGB[0] + t * (SNOW_RGB[0] - ALPINE_RGB[0]) + (n - 0.5) * 0.12),
+      clamp(ALPINE_RGB[1] + t * (SNOW_RGB[1] - ALPINE_RGB[1]) + (n - 0.5) * 0.10),
+      clamp(ALPINE_RGB[2] + t * (SNOW_RGB[2] - ALPINE_RGB[2]) + (n - 0.5) * 0.08),
+    ];
+  }
 
-  return [
-    Math.min(1, baseRGB[0] * factor),
-    Math.min(1, baseRGB[1] * factor),
-    Math.min(1, baseRGB[2] * factor),
-  ];
+  // Weighted blend of all biomes that reach this vertex
+  let rAcc = 0, gAcc = 0, bAcc = 0, wTotal = 0;
+  for (const biome of BIOMES_SORTED) {
+    let w = 0;
+    for (const rect of biome.rects) {
+      const ww = biomeWeight(lat, lng, rect);
+      if (ww > w) w = ww;
+    }
+    if (w > 0) {
+      rAcc += biome.rgb[0] * w;
+      gAcc += biome.rgb[1] * w;
+      bAcc += biome.rgb[2] * w;
+      wTotal += w;
+    }
+  }
+  // Steppe fallback for unclassified land
+  const sw = Math.max(0, 1 - wTotal);
+  if (sw > 0) {
+    rAcc += STEPPE_RGB[0] * sw;
+    gAcc += STEPPE_RGB[1] * sw;
+    bAcc += STEPPE_RGB[2] * sw;
+    wTotal += sw;
+  }
+  const base: RGB = [rAcc / wTotal, gAcc / wTotal, bAcc / wTotal];
+
+  // HSL-space artistic modulation
+  const [h, s, l] = rgbToHsl(base[0], base[1], base[2]);
+  const n        = fieldNoise(lat, lng);       // 0–1 organic noise
+  const elevFrac = clamp(elev / 900);
+
+  return hslToRgb(
+    h,
+    clamp(s + 0.10 - elevFrac * 0.18, 0, 0.95), // valleys richer, ridges muted
+    clamp(l + (n - 0.5) * 0.52 + elevFrac * 0.14, 0.10, 0.90), // ±26% noise + ridge highlight
+  );
 }
 
 type Props = {
