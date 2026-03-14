@@ -16,6 +16,8 @@ import {
   ALPINE_RGB,
   SNOW_RGB,
   STEPPE_RGB,
+  DEAD_SEA_RGB,
+  GALILEE_RGB,
 } from "@/data/geography/historicalBiomes";
 
 type RGB = [number, number, number];
@@ -128,10 +130,51 @@ function biomeWeight(lat: number, lng: number, rect: [number, number, number, nu
   return t * t; // quadratic falloff — solid core, feathered edges
 }
 
+// ── Below-sea-level geography helpers ────────────────────────────────────────
+//
+// The Jordan Rift Valley is the lowest terrestrial region on Earth. Large
+// swaths of it are below sea level but are DRY LAND, not ocean. Without
+// this distinction the entire rift looks like one giant connected lake.
+//
+// Sea of Galilee (Kinneret): freshwater lake at -213 m, ~21×11 km
+// Dead Sea (Yam HaMelach):   hypersaline lake at -430 m, ~50×15 km
+// Jordan Valley between:     below sea-level LAND — river only ~50 m wide,
+//                             invisible at our 5 km resolution, shown as terrain
+//
+// The Nile Delta is also at/below sea level in places; flagged as land to
+// prevent z-fighting between the low terrain mesh and the water plane.
+
+function isDeadSea(lat: number, lng: number): boolean {
+  return lat >= 31.08 && lat <= 31.78 && lng >= 35.35 && lng <= 35.62;
+}
+function isSeaOfGalilee(lat: number, lng: number): boolean {
+  return lat >= 32.70 && lat <= 32.93 && lng >= 35.50 && lng <= 35.69;
+}
+/** Below-sea-level areas that are LAND, not ocean — clamp above water plane */
+function isBelowSeaLevelLand(lat: number, lng: number): boolean {
+  // Jordan Rift Valley corridor (excludes the lake bodies above)
+  if (lat >= 30.3 && lat <= 33.5 && lng >= 35.0 && lng <= 36.3) return true;
+  // Nile Delta (low-lying, some vertices negative — prevents z-fight w/ water plane)
+  if (lat >= 29.8 && lat <= 31.5 && lng >= 30.5 && lng <= 32.5) return true;
+  return false;
+}
+
 // ── Master color function ──────────────────────────────────────────────────────
 
 function getBiomeColor(lat: number, lng: number, elev: number): RGB {
-  if (elev < 0) return OCEAN_RGB;
+  // ── Inland lakes — historically distinct water bodies, not part of the ocean ──
+  if (isDeadSea(lat, lng))      return DEAD_SEA_RGB;
+  if (isSeaOfGalilee(lat, lng)) return GALILEE_RGB;
+
+  // ── Below-sea-level LAND — Jordan Rift and Nile Delta ──
+  // These areas are genuinely terrestrial; fall through to biome coloring.
+  // (Their geometry is clamped above y=0 in the vertex loop below so the
+  //  water plane doesn't bleed through them.)
+  if (elev < 0 && isBelowSeaLevelLand(lat, lng)) {
+    // treat elevation as 0 for biome purposes — still picks up jordan-valley biome
+  } else if (elev < 0) {
+    return OCEAN_RGB;
+  }
 
   if (elev > 2800) {
     // Textured snow — noise so peaks feel geological, not plastic-white
@@ -215,11 +258,18 @@ export default function TerrainMesh({ elevations }: Props) {
         const lng = GEO.minLng + (col / (cols - 1)) * lngRange;
 
         // World-space position
-        const wx = (col / (cols - 1) - 0.5) * PLANE_W;
-        const wz = (row / (rows - 1) - 0.5) * PLANE_H;
+        const wx   = (col / (cols - 1) - 0.5) * PLANE_W;
+        const wz   = (row / (rows - 1) - 0.5) * PLANE_H;
         const elev = elevations[vi] ?? 0;
-        // Allow sub-zero elevations to go below y=0 so the WaterPlane shows through
-        const wy = elev * ELEVATION_SCALE;
+
+        // Below-sea-level land (Jordan Rift corridor, Nile Delta) must sit
+        // just above the water plane (y=-0.05) so it renders as terrain, not
+        // as underwater. The actual lakes (Dead Sea, Sea of Galilee) keep their
+        // true negative y so the reflective water plane appears above them.
+        const isLake = isDeadSea(lat, lng) || isSeaOfGalilee(lat, lng);
+        const wy = (!isLake && elev < 0 && isBelowSeaLevelLand(lat, lng))
+          ? 0.02                  // just above water plane → terrain visible
+          : elev * ELEVATION_SCALE;
 
         positions[vi * 3 + 0] = wx;
         positions[vi * 3 + 1] = wy;

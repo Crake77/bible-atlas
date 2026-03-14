@@ -23,10 +23,16 @@ function hex(h: string): RGB {
 }
 
 // Non-polygon elevation overrides
-export const OCEAN_RGB: RGB = hex("#1a3a6a");  // deep navy
-export const ALPINE_RGB: RGB = hex("#788090"); // grey rock
-export const SNOW_RGB: RGB = hex("#e0d8c0");   // warm snow
-export const STEPPE_RGB: RGB = hex("#9a8a50"); // semi-arid fallback
+export const OCEAN_RGB: RGB  = hex("#1a3a6a");  // deep navy (Mediterranean / Red Sea)
+export const ALPINE_RGB: RGB = hex("#788090");  // grey rock
+export const SNOW_RGB: RGB   = hex("#e0d8c0");  // warm snow
+export const STEPPE_RGB: RGB = hex("#9a8a50");  // semi-arid fallback
+
+// Inland lake colours — historically distinct water bodies in the Jordan Rift
+// Dead Sea (Yam HaMelach / Sea of Salt): hypersaline, deep aquamarine-grey
+// Sea of Galilee (Kinneret): freshwater, bright blue-green
+export const DEAD_SEA_RGB: RGB = hex("#1f4a5c");
+export const GALILEE_RGB: RGB  = hex("#1a5a78");
 
 export const HISTORICAL_BIOMES: BiomeZone[] = [
   {
