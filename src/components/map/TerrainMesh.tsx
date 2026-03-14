@@ -16,8 +16,6 @@ import {
   ALPINE_RGB,
   SNOW_RGB,
   STEPPE_RGB,
-  DEAD_SEA_RGB,
-  GALILEE_RGB,
 } from "@/data/geography/historicalBiomes";
 
 type RGB = [number, number, number];
@@ -196,12 +194,9 @@ function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
 // ── Master color function ──────────────────────────────────────────────────────
 
 function getBiomeColor(lat: number, lng: number, elev: number): RGB {
-  // ── Inland lakes — color the full bbox regardless of elevation.
-  // At 5km mesh resolution many shoreline vertices average above 0m even though
-  // the lake centre is -213m / -430m. Dropping the elev gate makes the lakes
-  // appear at their correct geographic size instead of a tiny speck.
-  if (isDeadSea(lat, lng))      return DEAD_SEA_RGB;
-  if (isSeaOfGalilee(lat, lng)) return GALILEE_RGB;
+  // Lakes are rendered as polygon overlays in LakesLayer.tsx — no bbox coloring
+  // here, which was causing rectangular patches. Terrain vertices under the lakes
+  // are below the water plane and hidden, so their color doesn't matter.
 
   // ── Below-sea-level LAND — Jordan Rift and Nile Delta ──
   // These areas are genuinely terrestrial; fall through to biome coloring.
