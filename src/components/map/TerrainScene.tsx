@@ -5,9 +5,12 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
+import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
 import { buildHeightmap } from "@/lib/terrain/buildHeightmap";
 import { geoToWorld } from "@/lib/terrain/constants";
 import TerrainMesh from "./TerrainMesh";
+import WaterPlane from "./WaterPlane";
 import RiverLayer from "./RiverLayer";
 import RegionLayer from "./RegionLayer";
 import CityLayer from "./CityLayer";
@@ -154,14 +157,24 @@ export default function TerrainScene() {
         }}
         shadows
       >
-        <ambientLight intensity={0.6} />
-        <directionalLight
-          position={[200, 300, 100]}
-          intensity={1.2}
-          castShadow
-          shadow-mapSize={[2048, 2048]}
-        />
+        {/* Warm parchment fog — foreground crisp, distant regions haze into antiquity */}
+        <fogExp2 attach="fog" args={["#c8b090", 0.0008]} />
 
+        {/* 3-light rig: golden-hour feel with classic cartographic shadow direction */}
+        {/* Warm sky hemisphere — sets overall warm ancient-world tone */}
+        <hemisphereLight args={["#c8a870", "#5a4a30", 0.7]} />
+        {/* Primary directional — upper-left per cartographic convention */}
+        <directionalLight
+          position={[-200, 350, -100]}
+          intensity={1.4}
+          castShadow
+          shadow-mapSize={[4096, 4096]}
+        />
+        {/* Subtle warm fill from below — softens harsh valley shadows */}
+        <directionalLight position={[100, -100, 50]} intensity={0.15} color="#c8a060" />
+
+        {/* Water plane renders first; terrain occludes it above sea level */}
+        <WaterPlane />
         {heightmap && <TerrainMesh elevations={heightmap} />}
 
         {/* Data layers */}
@@ -184,6 +197,13 @@ export default function TerrainScene() {
           dampingFactor={0.05}
           target={[centerX, 0, centerZ]}
         />
+
+        {/* Post-processing: bloom on bright peaks, vignette, ACES filmic tone */}
+        <EffectComposer>
+          <Bloom luminanceThreshold={0.6} luminanceSmoothing={0.4} intensity={0.35} />
+          <Vignette offset={0.3} darkness={0.7} />
+          <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+        </EffectComposer>
       </Canvas>
 
       {/* Layer panel overlay (outside Canvas — pure DOM) */}

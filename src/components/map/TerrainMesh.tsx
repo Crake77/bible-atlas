@@ -2,64 +2,62 @@
 
 import { useRef, useMemo } from "react";
 import * as THREE from "three";
-import { PLANE_W, PLANE_H, MESH_COLS, MESH_ROWS, ELEVATION_SCALE } from "@/lib/terrain/constants";
+import {
+  PLANE_W,
+  PLANE_H,
+  MESH_COLS,
+  MESH_ROWS,
+  ELEVATION_SCALE,
+  GEO,
+} from "@/lib/terrain/constants";
+import {
+  BIOMES_SORTED,
+  OCEAN_RGB,
+  ALPINE_RGB,
+  SNOW_RGB,
+  STEPPE_RGB,
+} from "@/data/geography/historicalBiomes";
+
+type RGB = [number, number, number];
+
+/**
+ * Look up the biome-based vertex color for a given lat/lng/elevation.
+ * Uses historically-researched biome zones for the ancient Near East c.1000 BC.
+ */
+function getBiomeColor(lat: number, lng: number, elev: number): RGB {
+  // Elevation overrides (regardless of biome polygon)
+  if (elev < 0) return OCEAN_RGB;
+  if (elev > 2800) return SNOW_RGB;
+  if (elev > 1800) return ALPINE_RGB;
+
+  // First-match biome lookup (sorted by priority descending)
+  let baseRGB: RGB = STEPPE_RGB; // semi-arid steppe fallback
+  outer: for (const biome of BIOMES_SORTED) {
+    for (const [minLat, maxLat, minLng, maxLng] of biome.rects) {
+      if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) {
+        baseRGB = biome.rgb;
+        break outer;
+      }
+    }
+  }
+
+  // Elevation modulation: ±12% luminance for ridge/valley contrast
+  // 0 m → 0.88× (slightly darker valley floors)
+  // 750 m → 1.00× (base color)
+  // 1500 m → 1.12× (slightly brighter ridges)
+  const elevFrac = Math.min(1, Math.max(0, elev / 1500));
+  const factor = 0.88 + elevFrac * 0.24;
+
+  return [
+    Math.min(1, baseRGB[0] * factor),
+    Math.min(1, baseRGB[1] * factor),
+    Math.min(1, baseRGB[2] * factor),
+  ];
+}
 
 type Props = {
   elevations: Float32Array;
 };
-
-/**
- * Returns an RGB triple (0–1 each) for a given elevation in meters.
- * Mimics ancient vegetation: greener lowlands, brown highlands, white peaks.
- */
-function elevationColor(elev: number): [number, number, number] {
-  // Deep ocean / Dead Sea
-  if (elev < -10) return [0x1a / 255, 0x4a / 255, 0x8a / 255];
-  // Shallow water / shoreline
-  if (elev < 0) return [0x2d / 255, 0x6b / 255, 0x5a / 255];
-  // Coastal lowland — olive green (add historical vegetation +0.03 on green)
-  if (elev < 200) {
-    const t = elev / 200;
-    const r = (0x4a + t * (0x3d - 0x4a)) / 255;
-    const g = Math.min(1, (0x6b + t * (0x5c - 0x6b)) / 255 + 0.03);
-    const b = (0x2a + t * (0x1e - 0x2a)) / 255;
-    return [r, g, b];
-  }
-  // Forest green highland
-  if (elev < 600) {
-    const t = (elev - 200) / 400;
-    const r = (0x3d + t * (0x5c - 0x3d)) / 255;
-    const g = Math.min(1, (0x5c + t * (0x4a - 0x5c)) / 255 + 0.03);
-    const b = (0x1e + t * (0x1e - 0x1e)) / 255;
-    return [r, g, b];
-  }
-  // Brown-green
-  if (elev < 1200) {
-    const t = (elev - 600) / 600;
-    const r = (0x5c + t * (0x6b - 0x5c)) / 255;
-    const g = (0x4a + t * (0x3a - 0x4a)) / 255;
-    const b = (0x1e + t * (0x1a - 0x1e)) / 255;
-    return [r, g, b];
-  }
-  // Brown
-  if (elev < 2000) {
-    const t = (elev - 1200) / 800;
-    const r = (0x6b + t * (0x7a - 0x6b)) / 255;
-    const g = (0x3a + t * (0x6a - 0x3a)) / 255;
-    const b = (0x1a + t * (0x5a - 0x1a)) / 255;
-    return [r, g, b];
-  }
-  // Grey-brown
-  if (elev < 3000) {
-    const t = (elev - 2000) / 1000;
-    const r = (0x7a + t * (0xc8 - 0x7a)) / 255;
-    const g = (0x6a + t * (0xc0 - 0x6a)) / 255;
-    const b = (0x5a + t * (0xb0 - 0x5a)) / 255;
-    return [r, g, b];
-  }
-  // Snow / peaks
-  return [0xc8 / 255, 0xc0 / 255, 0xb0 / 255];
-}
 
 export default function TerrainMesh({ elevations }: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -72,35 +70,36 @@ export default function TerrainMesh({ elevations }: Props) {
     const positions = new Float32Array(vertCount * 3);
     const colors = new Float32Array(vertCount * 3);
 
-    // Build vertex positions and colors.
-    // After rotating the plane -π/2 around X, the PlaneGeometry's Y becomes Z,
-    // so we set Y (up) from elevation data.
-    // Tile row 0 = top of image = north = -z in world space.
+    const latRange = GEO.maxLat - GEO.minLat;
+    const lngRange = GEO.maxLng - GEO.minLng;
+
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const vi = row * cols + col;
 
-        // World X: left (-PLANE_W/2) to right (+PLANE_W/2)
+        // Geographic coordinates for this vertex
+        const lat = GEO.maxLat - (row / (rows - 1)) * latRange;
+        const lng = GEO.minLng + (col / (cols - 1)) * lngRange;
+
+        // World-space position
         const wx = (col / (cols - 1) - 0.5) * PLANE_W;
-        // World Z: row 0 = north = -PLANE_H/2, row max = south = +PLANE_H/2
         const wz = (row / (rows - 1) - 0.5) * PLANE_H;
-        // World Y (elevation). Oceans/seas are clamped to 0 so they render
-        // as a flat plane. Color still uses raw elev so water stays blue.
         const elev = elevations[vi] ?? 0;
-        const wy = Math.max(0, elev) * ELEVATION_SCALE;
+        // Allow sub-zero elevations to go below y=0 so the WaterPlane shows through
+        const wy = elev * ELEVATION_SCALE;
 
         positions[vi * 3 + 0] = wx;
         positions[vi * 3 + 1] = wy;
         positions[vi * 3 + 2] = wz;
 
-        const [cr, cg, cb] = elevationColor(elev);
+        const [cr, cg, cb] = getBiomeColor(lat, lng, elev);
         colors[vi * 3 + 0] = cr;
         colors[vi * 3 + 1] = cg;
         colors[vi * 3 + 2] = cb;
       }
     }
 
-    // Build triangle indices
+    // Triangle indices
     const idxCount = (cols - 1) * (rows - 1) * 6;
     const indices = new Uint32Array(idxCount);
     let idx = 0;
@@ -110,7 +109,6 @@ export default function TerrainMesh({ elevations }: Props) {
         const b = row * cols + col + 1;
         const c = (row + 1) * cols + col;
         const d = (row + 1) * cols + col + 1;
-        // Two triangles per quad
         indices[idx++] = a;
         indices[idx++] = c;
         indices[idx++] = b;
@@ -133,8 +131,13 @@ export default function TerrainMesh({ elevations }: Props) {
   }, [positions, colors, indices]);
 
   return (
-    <mesh ref={meshRef} geometry={geometry} receiveShadow>
-      <meshLambertMaterial vertexColors side={THREE.DoubleSide} />
+    <mesh ref={meshRef} geometry={geometry} receiveShadow castShadow>
+      <meshStandardMaterial
+        vertexColors
+        side={THREE.DoubleSide}
+        roughness={0.85}
+        metalness={0.0}
+      />
     </mesh>
   );
 }
