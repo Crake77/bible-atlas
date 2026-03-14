@@ -88,6 +88,105 @@ export default function TerrainMap() {
         }
       }
 
+      // ── Historical vegetation post-process shader ─────────────────────────
+      // Ancient Near East (~1400 BC) was dramatically greener than today:
+      // - Central highlands: dense cedar/oak/terebinth forest (not scrub)
+      // - Jordan Valley: subtropical thicket, papyrus, lions
+      // - Negev: savanna/steppe, not desert (deforestation happened over millennia)
+      // - Lebanon/Bashan: so forested they named the trees
+      //
+      // This shader pulls ALL sandy/tan/earthy tones aggressively toward
+      // forest green + olive, warms the highlights (golden afternoon sun),
+      // cools the shadows (fantasy depth), and adds vignette focus.
+      // Only bare-rock grey and elevation peaks stay unshifted.
+      viewer.scene.postProcessStages.add(
+        new Cesium.PostProcessStage({
+          fragmentShader: `
+            uniform sampler2D colorTexture;
+            in vec2 v_textureCoordinates;
+
+            vec3 rgb2hsv(vec3 c) {
+              vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+              vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+              vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+              float d = q.x - min(q.w, q.y);
+              return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)),
+                          d / (q.x + 1e-10), q.x);
+            }
+
+            vec3 hsv2rgb(vec3 c) {
+              vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+              vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+              return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+            }
+
+            void main() {
+              vec4 orig = texture(colorTexture, v_textureCoordinates);
+
+              // Pass through sky / transparent pixels unchanged
+              float brightness = dot(orig.rgb, vec3(0.333));
+              if (brightness > 0.90 || orig.a < 0.05) {
+                out_FragColor = orig;
+                return;
+              }
+
+              vec3 hsv = rgb2hsv(orig.rgb);
+              float h = hsv.x;
+              float s = hsv.y;
+              float v = hsv.z;
+
+              // ── Detect warm earthy/sandy/tan tones (modern arid landscape) ──
+              // Hue 0.04–0.20 = orange-yellow territory (sand, dirt, dry grass)
+              // Must have some saturation to distinguish from grey bare rock
+              float isEarthy = smoothstep(0.03, 0.07, h)
+                             * (1.0 - smoothstep(0.19, 0.24, h))
+                             * smoothstep(0.08, 0.22, s);
+
+              // ── Shift earthy tones hard toward olive / forest green ──────────
+              // Target hue 0.28–0.32 = rich olive/forest green
+              h = mix(h, 0.30, isEarthy * 0.75);
+              // Boost saturation so the green is rich, not pale
+              s = mix(s, min(s * 2.4, 0.88), isEarthy * 0.80);
+              // Forests are darker than sand — pull value down slightly
+              v = mix(v, v * 0.82, isEarthy * 0.50);
+
+              // ── Amplify greens that already exist ─────────────────────────
+              float isGreen = smoothstep(0.22, 0.30, h)
+                            * (1.0 - smoothstep(0.44, 0.52, h));
+              s = mix(s, min(s * 1.6, 0.95), isGreen * 0.55);
+              v = mix(v, min(v * 1.08, 1.0), isGreen * 0.30);
+
+              // ── Pull pale grey/tan (limestone hills) toward sage green ─────
+              float isGrey = (1.0 - smoothstep(0.0, 0.12, s)) * smoothstep(0.3, 0.7, v);
+              s = mix(s, 0.22, isGrey * 0.45);
+              h = mix(h, 0.28, isGrey * 0.35);
+
+              vec3 color = hsv2rgb(vec3(h, s, v));
+
+              // ── Warm highlights / cool shadows (fantasy RPG tone) ──────────
+              float lum = dot(color, vec3(0.299, 0.587, 0.114));
+              // Warm golden sunlight on bright surfaces
+              color.r += lum * lum * 0.10;
+              color.g += lum * lum * 0.05;
+              // Cool blue-violet in deep shadows (valley depth)
+              color.b += (1.0 - lum) * (1.0 - lum) * 0.08;
+              color.r -= (1.0 - lum) * (1.0 - lum) * 0.03;
+
+              // ── Contrast boost (makes ridges and valleys pop) ─────────────
+              color = clamp((color - 0.5) * 1.20 + 0.5, 0.0, 1.0);
+
+              // ── Vignette — darken globe edges, focus on Near East ─────────
+              vec2 uv = v_textureCoordinates - 0.5;
+              float vig = 1.0 - dot(uv * 1.5, uv * 1.5);
+              vig = pow(max(vig, 0.0), 0.45);
+              color *= vig;
+
+              out_FragColor = vec4(clamp(color, 0.0, 1.0), orig.a);
+            }
+          `,
+        })
+      );
+
       viewerRef.current = viewer;
 
       // ── Camera altitude cap — keeps LOD consistent ────────────────────────
