@@ -26,21 +26,41 @@ function clamp(v: number, lo = 0, hi = 1): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-// ── Deterministic multi-octave noise ──────────────────────────────────────────
-// Organic, painterly texture — same lat/lng always gives same value.
-// 4 octaves produce coarse color patches + fine local variation.
+// ── Noise ─────────────────────────────────────────────────────────────────────
+// hash2 gives a deterministic 0–1 value per integer grid cell.
+// smoothNoise bilinearly interpolates between grid corners with a smoothstep
+// curve — this is what prevents polka-dot artifacts. Raw hash noise at high
+// frequencies makes every vertex independent; smooth noise makes neighbouring
+// vertices correlated so you get organic blobs, not speckle.
 
 function hash2(x: number, y: number): number {
   const v = Math.sin(x * 78.233 + y * 127.1) * 43758.5453;
   return v - Math.floor(v); // 0–1
 }
 
+function smoothNoise(lat: number, lng: number, freq: number): number {
+  const x = lat * freq, y = lng * freq;
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi,        yf = y - yi;
+  // Smoothstep: removes derivative discontinuity at cell boundaries
+  const ux = xf * xf * (3 - 2 * xf);
+  const uy = yf * yf * (3 - 2 * yf);
+  // Bilinear interpolation across 4 corners
+  return (
+    hash2(xi,     yi    ) * (1 - ux) * (1 - uy) +
+    hash2(xi + 1, yi    ) * ux       * (1 - uy) +
+    hash2(xi,     yi + 1) * (1 - ux) * uy       +
+    hash2(xi + 1, yi + 1) * ux       * uy
+  );
+}
+
+// 3-octave smooth noise — broad painterly sweeps, no fine speckle.
+// Coarse octave dominates so the result reads as large colour patches.
 function fieldNoise(lat: number, lng: number): number {
   return (
-    hash2(lat * 3.7,  lng * 4.1)  * 0.44 + // ~110km coarse patches
-    hash2(lat * 9.3,  lng * 10.7) * 0.28 + // ~45km mid features
-    hash2(lat * 21.1, lng * 22.7) * 0.17 + // ~20km fine detail
-    hash2(lat * 44.3, lng * 43.1) * 0.11   // ~10km micro variation
+    smoothNoise(lat, lng, 0.55) * 0.55 + // ~180km broad sweeps
+    smoothNoise(lat, lng, 1.7)  * 0.30 + // ~60km mid blobs
+    smoothNoise(lat, lng, 4.0)  * 0.15   // ~25km fine variation
   );
 }
 
@@ -78,22 +98,34 @@ function hslToRgb(h: number, s: number, l: number): RGB {
   return [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)];
 }
 
-// ── Soft biome blending ────────────────────────────────────────────────────────
-// Hard bbox edges look like painted rectangles. Each biome fades in/out over
-// ~40km so adjacent zones blend naturally — forests melt into steppe, steppe
-// into desert — no straight boundary lines visible anywhere.
+// ── Soft biome blending with domain warping ───────────────────────────────────
+// Two techniques eliminate visible rectangle edges:
+//
+// 1. Large blend zone (0.9° ≈ 100km): biomes overlap significantly so colour
+//    always transitions through a wide gradient, never a sharp line.
+//
+// 2. Domain warping: before the bbox distance test we displace the query
+//    coordinates by a low-frequency noise field. This bends every boundary
+//    into a wiggly organic curve — even a perfectly straight bbox edge becomes
+//    an undulating coastline-like shape. Warp strength 0.8° means boundaries
+//    can shift up to ±90km from their "true" position.
 
-const BLEND_SQ = 0.35 * 0.35; // squared ~40km radius (avoids sqrt in hot loop)
+const BLEND_SQ  = 0.9 * 0.9; // ~100km blend zone (squared, no sqrt in hot loop)
+const WARP_STR  = 0.8;        // degrees of boundary warp (~90km displacement)
 
 function biomeWeight(lat: number, lng: number, rect: [number, number, number, number]): number {
+  // Domain warp: displace query coords with a slow noise field
+  const wLat = lat + (smoothNoise(lat * 0.9, lng * 1.1, 1.2) - 0.5) * WARP_STR;
+  const wLng = lng + (smoothNoise(lat * 1.2, lng * 0.8, 1.0) - 0.5) * WARP_STR;
+
   const [minLat, maxLat, minLng, maxLng] = rect;
-  if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) return 1;
-  const dLat = Math.max(minLat - lat, 0, lat - maxLat);
-  const dLng = Math.max(minLng - lng, 0, lng - maxLng);
+  if (wLat >= minLat && wLat <= maxLat && wLng >= minLng && wLng <= maxLng) return 1;
+  const dLat = Math.max(minLat - wLat, 0, wLat - maxLat);
+  const dLng = Math.max(minLng - wLng, 0, wLng - maxLng);
   const dSq = dLat * dLat + dLng * dLng;
   if (dSq >= BLEND_SQ) return 0;
   const t = 1 - dSq / BLEND_SQ;
-  return t * t; // quadratic falloff — solid inside, soft at edges
+  return t * t; // quadratic falloff — solid core, feathered edges
 }
 
 // ── Master color function ──────────────────────────────────────────────────────
@@ -151,8 +183,8 @@ function getBiomeColor(lat: number, lng: number, elev: number): RGB {
 
   return hslToRgb(
     h,
-    clamp(s + 0.10 - elevFrac * 0.18, 0, 0.95), // valleys richer, ridges muted
-    clamp(l + (n - 0.5) * 0.52 + elevFrac * 0.14, 0.10, 0.90), // ±26% noise + ridge highlight
+    clamp(s + 0.10 - elevFrac * 0.18, 0, 0.95),          // valleys richer, ridges muted
+    clamp(l + (n - 0.5) * 0.30 + elevFrac * 0.14, 0.10, 0.90), // ±15% smooth noise + ridge lift
   );
 }
 
