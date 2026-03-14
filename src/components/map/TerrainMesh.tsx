@@ -154,13 +154,13 @@ function isSeaOfGalilee(lat: number, lng: number): boolean {
  * Below-sea-level areas that are LAND, not ocean — geometry clamped above
  * the water plane so they render as terrain, not underwater.
  * The Nile Delta check only fires for very shallow negative elevations
- * (elev > -12m) — deeper values in that bbox are the actual Mediterranean.
+ * (elev > -5m) — deeper values in that bbox are the actual Mediterranean.
  */
 function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
   // Jordan Rift Valley corridor — can be -430m and still be dry land
   if (lat >= 30.3 && lat <= 33.5 && lng >= 35.0 && lng <= 36.3) return true;
-  // Nile Delta: only catch genuinely shallow vertices; Mediterranean is deeper
-  if (elev > -12 && lat >= 29.8 && lat <= 31.0 && lng >= 30.5 && lng <= 32.0) return true;
+  // Nile Delta: only catch true delta lowlands; Mediterranean shelf is > 5m deep
+  if (elev > -5 && lat >= 29.8 && lat <= 31.0 && lng >= 30.5 && lng <= 32.0) return true;
   return false;
 }
 
