@@ -22,10 +22,17 @@ export const SAMPLE = 2;
 export const MESH_COLS = GRID_W / SAMPLE; // 1664
 export const MESH_ROWS = GRID_H / SAMPLE; // 768
 
-// World-space plane dimensions (units). PLANE_W drives scale; PLANE_H
-// is derived from the geographic aspect ratio of the tile grid.
+// World-space plane dimensions (units).
+// PLANE_H must account for the fact that 1° of longitude is shorter than
+// 1° of latitude at non-equatorial latitudes. At center lat ~30.85°N,
+// cos(30.85°) ≈ 0.859, so longitude degrees are ~14% shorter than latitude
+// degrees in physical km. Dividing by cos(center_lat) corrects the aspect ratio.
+// Without this, the map is squished ~19% north-south.
 export const PLANE_W = 1000;
-export const PLANE_H = Math.round(PLANE_W * ((28 - 16.6) / (61.875 + 11.25))); // ≈ 382
+const LAT_RANGE = 45.08 - 16.63;   // degrees
+const LNG_RANGE = 61.875 + 11.25;  // degrees
+const CENTER_LAT_RAD = ((45.08 + 16.63) / 2) * (Math.PI / 180);
+export const PLANE_H = Math.round(PLANE_W * (LAT_RANGE / LNG_RANGE) / Math.cos(CENTER_LAT_RAD)); // ≈ 453
 
 // World-units per meter of real elevation. 0.01 gives Mt Hermon (~2814m)
 // about 28 units — visible as a clear peak at our default camera distance.
@@ -34,10 +41,10 @@ export const ELEVATION_SCALE = 0.0025;
 // Geographic bounds derived from the tile grid edges (not approximated —
 // these are the exact lat/lng at the tile boundaries the mesh will cover).
 export const GEO = {
-  minLat: 16.6,
-  maxLat: 44.5,
-  minLng: -11.25,
-  maxLng: 61.875,
+  minLat: 16.63,   // exact south edge of tile y=28 at zoom 6
+  maxLat: 45.08,   // exact north edge of tile y=23 at zoom 6
+  minLng: -11.25,  // exact west edge of tile x=30 at zoom 6
+  maxLng: 61.875,  // exact east edge of tile x=42 at zoom 6
 };
 
 /**

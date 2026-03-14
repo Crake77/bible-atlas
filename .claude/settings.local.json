@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --version && npm --version)",
+      "Bash(cd C:/Users/johnd/bible-atlas && npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes 2>&1)",
+      "Bash(cd C:/Users/johnd/bible-atlas && npm install 2>&1)",
+      "Bash(gh auth:*)",
+      "Bash(winget install:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version 2>&1)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth login --web --git-protocol https 2>&1)",
+      "Bash(cd C:/Users/johnd/bible-atlas && \"/c/Program Files/GitHub CLI/gh.exe\" repo create bible-atlas --public --description \"Interactive 3D Bible geography atlas\" --source . --remote origin --push 2>&1)",
+      "mcp__claude_ai_Vercel__list_teams",
+      "mcp__claude_ai_Vercel__list_projects",
+      "mcp__claude_ai_Vercel__deploy_to_vercel",
+      "Bash(npx vercel:*)",
+      "Read(//c/Users/johnd/Downloads/**)",
+      "Bash(unzip -o JDClaudePP.zip -d JDClaudePP_extracted)",
+      "Bash(cp C:/Users/johnd/Downloads/JDClaudePP_extracted/CLAUDE.md C:/Users/johnd/bible-atlas/CLAUDE.md && cp C:/Users/johnd/Downloads/JDClaudePP_extracted/PROJECT_STATUS.md C:/Users/johnd/bible-atlas/PROJECT_STATUS.md)",
+      "Bash(cd C:/Users/johnd/bible-atlas && mkdir -p src/app src/components/map src/components/reader src/components/ui src/data/geography src/data/events src/data/bible-text src/data/terrain src/lib src/types scripts public)",
+      "Bash(npm show:*)",
+      "Bash(cd C:/Users/johnd/bible-atlas && npm run build 2>&1)",
+      "Bash(npx tsc:*)",
+      "Bash(find /c/Users/johnd/bible-atlas -name \"*.d.ts\" -path \"*/cesium/*\" 2>/dev/null | head -3)",
+      "Bash(npm run:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "mcp__claude_ai_Vercel__get_project",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(p.dependencies.cesium\\)\")",
+      "Bash(git checkout:*)",
+      "Bash(npm install:*)",
+      "mcp__claude_ai_Vercel__get_deployment_build_logs",
+      "Bash(cd C:/Users/johnd/bible-atlas && grep -E '\"@react-three/drei\"' package.json)"
+    ]
+  }
+}
