@@ -1,7 +1,17 @@
 "use client";
 
-import TerrainMap from "@/components/map/TerrainMap";
+import dynamic from "next/dynamic";
 import BibleReader from "@/components/reader/BibleReader";
+
+// Load the 3D map only in the browser — Three.js doesn't work on the server
+const TerrainMap = dynamic(() => import("@/components/map/TerrainMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-[#0d1b2a] flex items-center justify-center text-parchment/50">
+      Loading map...
+    </div>
+  ),
+});
 
 /**
  * Main page — lays out the two primary panels side by side:
