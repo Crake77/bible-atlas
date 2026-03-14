@@ -168,11 +168,11 @@ function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
   // Lebanese / Israeli Mediterranean coast (shore is at lng ~34.85–35.25).
   // Southern section (Arabah + Dead Sea + lower Jordan): can reach lng 35.0
   // since the coast at lat<32.5 is west of our mesh resolution.
-  if (lat >= 30.2 && lat <= 32.5 && lng >= 35.0 && lng <= 36.3) return true;
+  if (lat >= 30.2 && lat <= 32.5 && lng >= 35.10 && lng <= 36.3) return true;
   // Northern section (Sea of Galilee + upper Jordan + Hula Valley): start
-  // at 35.35 — the Lebanese coast at lat 32.5–33.5 is at lng 35.05–35.30,
-  // so 35.35 keeps us east of the sea.
-  if (lat >= 32.5 && lat <= 33.3 && lng >= 35.35 && lng <= 36.3) return true;
+  // at 35.55 — the Lebanese coast at lat 32.5–33.5 is at lng 35.05–35.40,
+  // so 35.55 keeps us east of the shoreline.
+  if (lat >= 32.5 && lat <= 33.3 && lng >= 35.55 && lng <= 36.3) return true;
   // Nile Delta: only catch true delta lowlands; Mediterranean shelf is > 5m deep
   if (elev > -5 && lat >= 29.8 && lat <= 31.0 && lng >= 30.5 && lng <= 32.0) return true;
 
@@ -195,11 +195,12 @@ function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
 // ── Master color function ──────────────────────────────────────────────────────
 
 function getBiomeColor(lat: number, lng: number, elev: number): RGB {
-  // ── Inland lakes — only color as lake when vertex is actually below sea level.
-  // Without the elev check, hillside vertices inside the bbox rectangle (which is
-  // larger than the real pear-shaped lake) get painted lake-blue on dry land.
-  if (isDeadSea(lat, lng)      && elev <= 0) return DEAD_SEA_RGB;
-  if (isSeaOfGalilee(lat, lng) && elev <= 0) return GALILEE_RGB;
+  // ── Inland lakes — color the full bbox regardless of elevation.
+  // At 5km mesh resolution many shoreline vertices average above 0m even though
+  // the lake centre is -213m / -430m. Dropping the elev gate makes the lakes
+  // appear at their correct geographic size instead of a tiny speck.
+  if (isDeadSea(lat, lng))      return DEAD_SEA_RGB;
+  if (isSeaOfGalilee(lat, lng)) return GALILEE_RGB;
 
   // ── Below-sea-level LAND — Jordan Rift and Nile Delta ──
   // These areas are genuinely terrestrial; fall through to biome coloring.
