@@ -145,12 +145,17 @@ function biomeWeight(lat: number, lng: number, rect: [number, number, number, nu
 // prevent z-fighting between the low terrain mesh and the water plane.
 
 function isDeadSea(lat: number, lng: number): boolean {
-  // Dead Sea: ~50×15km, -430m. Tightened to exclude surrounding dry rift floor.
-  return lat >= 31.10 && lat <= 31.76 && lng >= 35.35 && lng <= 35.55;
+  // Dead Sea has two distinct basins separated by the Lisan Peninsula (~31.28–31.46°N).
+  // Northern basin (deep, wide): ~31.46–31.78°N, ~17km wide
+  if (lat >= 31.46 && lat <= 31.78 && lng >= 35.35 && lng <= 35.55) return true;
+  // Southern basin (shallow, narrow finger): ~31.07–31.46°N, ~8–10km wide
+  if (lat >= 31.07 && lat <= 31.46 && lng >= 35.39 && lng <= 35.48) return true;
+  return false;
 }
 function isSeaOfGalilee(lat: number, lng: number): boolean {
-  // Sea of Galilee (Kinneret): ~21×11km, -213m. Extended slightly northward.
-  return lat >= 32.70 && lat <= 32.97 && lng >= 35.50 && lng <= 35.69;
+  // Sea of Galilee (Kinneret): harp-shaped, -213m.
+  // True extents: 32.700–32.924°N, 35.497–35.672°E
+  return lat >= 32.70 && lat <= 32.92 && lng >= 35.50 && lng <= 35.67;
 }
 /**
  * Below-sea-level areas that are LAND, not ocean — geometry clamped above
@@ -190,9 +195,11 @@ function isBelowSeaLevelLand(lat: number, lng: number, elev: number): boolean {
 // ── Master color function ──────────────────────────────────────────────────────
 
 function getBiomeColor(lat: number, lng: number, elev: number): RGB {
-  // ── Inland lakes — historically distinct water bodies, not part of the ocean ──
-  if (isDeadSea(lat, lng))      return DEAD_SEA_RGB;
-  if (isSeaOfGalilee(lat, lng)) return GALILEE_RGB;
+  // ── Inland lakes — only color as lake when vertex is actually below sea level.
+  // Without the elev check, hillside vertices inside the bbox rectangle (which is
+  // larger than the real pear-shaped lake) get painted lake-blue on dry land.
+  if (isDeadSea(lat, lng)      && elev <= 0) return DEAD_SEA_RGB;
+  if (isSeaOfGalilee(lat, lng) && elev <= 0) return GALILEE_RGB;
 
   // ── Below-sea-level LAND — Jordan Rift and Nile Delta ──
   // These areas are genuinely terrestrial; fall through to biome coloring.
